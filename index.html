@@ -502,12 +502,26 @@
         return () => stopCamera();
       }, [stream]);
 
+      // Fix for camera showing black screen (Mobile/Safari support)
       useEffect(() => {
-        if (isCameraActive && stream && videoRef.current) {
-          videoRef.current.srcObject = stream;
+        const videoElement = videoRef.current;
+        if (isCameraActive && stream && videoElement) {
+          videoElement.srcObject = stream;
+          // บังคับใส่ attribute ตรงๆ เพื่อแก้บั๊กจอดำในมือถือบางรุ่น (เช่น Safari / iOS)
+          videoElement.setAttribute('playsinline', 'true');
+          videoElement.setAttribute('autoplay', 'true');
+          videoElement.setAttribute('muted', 'true');
+          
+          // บังคับให้เริ่มเล่นภาพ (รอให้วิดีโอพร้อมก่อน)
+          videoElement.onloadedmetadata = () => {
+            videoElement.play().catch(err => {
+              console.error("Video auto-play prevented:", err);
+            });
+          };
         }
       }, [isCameraActive, stream]);
 
+      // Handle cross-platform camera opening
       const startCamera = async () => {
         try {
           const mediaStream = await navigator.mediaDevices.getUserMedia({ 
@@ -701,7 +715,8 @@
               
               {isCameraActive && (
                 <div className="relative w-full h-72 sm:h-96 bg-black rounded-lg overflow-hidden flex flex-col justify-end">
-                  <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+                  {/* Added explicit true to support autoPlay on iOS via Babel */}
+                  <video ref={videoRef} autoPlay={true} playsInline={true} muted={true} className="absolute inset-0 w-full h-full object-cover" />
                   
                   <div className="relative z-10 flex justify-center items-center pb-6 pt-12 bg-gradient-to-t from-black/60 to-transparent">
                     <button 
