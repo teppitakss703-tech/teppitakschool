@@ -4,9 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ระบบรายงานเวรประจำวันโรงเรียน</title>
+
+  <!-- Google Fonts: Sarabun (ฟอนต์มาตรฐานราชการไทย) -->
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Configure Tailwind to use Sarabun -->
+  <script>
+    tailwind.config = {
+      theme: {
+        fontFamily: {
+          sans: ['Sarabun', 'sans-serif'],
+        }
+      }
+    }
+  </script>
   
   <!-- FontAwesome for Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -15,6 +29,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   
   <style>
+    /* บังคับใช้ฟอนต์สารบรรณทั้งระบบ */
+    body { font-family: 'Sarabun', sans-serif; }
+    
     @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
     
@@ -61,6 +78,7 @@
     const AlertTriangle = ({ className }) => <FAIcon icon="fas fa-exclamation-triangle" className={className} />;
     const Settings = ({ className }) => <FAIcon icon="fas fa-cog" className={className} />;
     const FileText = ({ className }) => <FAIcon icon="fas fa-file-alt" className={className} />;
+    const FileWord = ({ className }) => <FAIcon icon="fas fa-file-word" className={className} />;
     const User = ({ className }) => <FAIcon icon="fas fa-user" className={className} />;
     const Shield = ({ className }) => <FAIcon icon="fas fa-shield-alt" className={className} />;
     const ImageIcon = ({ className }) => <FAIcon icon="fas fa-image" className={className} />;
@@ -1366,10 +1384,81 @@
 
       const dayComment = dailyComments.find(c => c.id === selectedDate) || {};
 
+      // ฟังก์ชันสำหรับดึงข้อมูลออกเป็น MS Word
+      const exportToWord = () => {
+        const formatText = (text) => text ? text.replace(/\n/g, '<br>') : '';
+        
+        // โครงสร้าง HTML เบื้องต้นสำหรับ MS Word
+        const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>แบบรายงานเวร</title><style>body { font-family: 'Sarabun', 'TH Sarabun New', sans-serif; font-size: 16pt; } table { width: 100%; border-collapse: collapse; margin-bottom: 20px; } th, td { border: 1px solid black; padding: 8px; vertical-align: top; text-align: left; } .center { text-align: center; } .bold { font-weight: bold; } .signatures { width: 100%; margin-top: 50px; text-align: center; border: none; } .signatures td { border: none; padding: 10px; }</style></head><body>`;
+        const footer = `</body></html>`;
+
+        let content = `<div class='center bold' style='font-size: 20pt; margin-bottom: 5px;'>สมุดบันทึกรายงานการปฏิบัติเวรประจำจุด</div>`;
+        content += `<div class='center bold' style='margin-bottom: 20px;'>ประจำ${formatThaiDate(selectedDate)}</div>`;
+
+        content += `<table><thead><tr><th style='width: 20%; text-align: center;'>เวรประจำจุด</th><th style='width: 55%; text-align: center;'>บันทึกเวร</th><th style='width: 25%; text-align: center;'>ผู้รายงาน</th></tr></thead><tbody>`;
+
+        dutyPoints.forEach(point => {
+          const pointReports = settings.shifts.map(s => getCellReport(point.id, s.id));
+          const uniqueReporters = [...new Set(pointReports.filter(Boolean).map(r => r.userName))];
+          const numShifts = settings.shifts.length || 1;
+
+          if (settings.shifts.length === 0) {
+            content += `<tr><td class='center bold'>${point.name}</td><td><span style='color: gray; font-style: italic;'>ยังไม่มีการตั้งค่ารอบเวร</span></td><td></td></tr>`;
+            return;
+          }
+
+          settings.shifts.forEach((shift, idx) => {
+            const report = pointReports[idx];
+            let detailText = '';
+            if (report) {
+               const statusIcon = report.status === 'normal' ? '✔ เหตุการณ์ปกติ' : '⚠ มีเหตุผิดปกติ';
+               const timeStr = new Date(report.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+               detailText = `<span style='color: ${report.status === 'normal' ? 'green' : 'red'};'>${statusIcon}</span> (เวลา ${timeStr} น.)<br/>${formatText(report.detail)}`;
+            } else {
+               detailText = `<span style='color: gray;'>...................................................................................................</span>`;
+            }
+
+            if (idx === 0) {
+              const reportersHTML = uniqueReporters.length > 0 ? uniqueReporters.join('<br/><br/>') : '<span style="color:gray;">(ลงนามผู้ปฏิบัติเวร)</span>';
+              content += `<tr><td rowspan='${numShifts}' class='center bold' style='vertical-align: middle;'>${point.name}</td><td><div class='bold'>${shift.label}</div>${detailText}</td><td rowspan='${numShifts}' class='center' style='vertical-align: middle;'>${reportersHTML}</td></tr>`;
+            } else {
+              content += `<tr><td><div class='bold'>${shift.label}</div>${detailText}</td></tr>`;
+            }
+          });
+        });
+
+        content += `</tbody></table>`;
+
+        content += `<div style='margin-top: 30px; border: 1px solid black; padding: 15px; border-radius: 5px;'>`;
+        content += `<div><span class='bold'>ข้อเสนอแนะของผู้ตรวจเวร:</span><br><br>${formatText(dayComment.inspectorComment) || '<span style="color:gray;">...................................................................................................................................................................................</span>'}</div>`;
+        if (dayComment.inspectorName) content += `<div style='text-align: right; margin-top: 10px; font-weight: bold;'>ลงชื่อ: ${dayComment.inspectorName}</div>`;
+        content += `<hr style='margin: 15px 0; border: 0; border-top: 1px dashed #ccc;'>`;
+        content += `<div><span class='bold'>ข้อสั่งการ/ข้อเสนอแนะของผู้บริหาร:</span><br><br>${formatText(dayComment.executiveComment) || '<span style="color:gray;">...................................................................................................................................................................................</span>'}</div>`;
+        if (dayComment.executiveName) content += `<div style='text-align: right; margin-top: 10px; font-weight: bold;'>ลงชื่อ: ${dayComment.executiveName}</div>`;
+        content += `</div>`;
+
+        content += `<table class='signatures'><tr>`;
+        content += `<td style='width: 33%;'>ลงชื่อ......................................................<br>ข้าราชการครูและบุคลากรประจำวัน</td>`;
+        content += `<td style='width: 33%;'>${dayComment.inspectorName ? `( ${dayComment.inspectorName} )` : 'ลงชื่อ......................................................'}<br>ผู้รับผิดชอบสายตรวจโรงเรียน</td>`;
+        content += `<td style='width: 33%;'>${dayComment.executiveName ? `( ${dayComment.executiveName} )` : 'ลงชื่อ......................................................'}<br>ผู้อำนวยการโรงเรียนหรือผู้รักษาการแทน</td>`;
+        content += `</tr></table>`;
+
+        // บังคับเข้ารหัส UTF-8 BOM (\ufeff) เพื่อให้ MS Word อ่านภาษาไทยได้สมบูรณ์
+        const blob = new Blob(['\ufeff', header + content + footer], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `รายงานการปฏิบัติเวร_${selectedDate}.doc`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
       return (
         <div className="space-y-4">
-          <div className="flex justify-end no-print">
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow"><Printer className="w-5 h-5" /> พิมพ์แบบรายงานเวรทางการ (A4)</button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-end no-print">
+            <button onClick={exportToWord} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow transition-colors"><FileWord className="w-5 h-5" /> นำออกเป็น Word (.doc)</button>
+            <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow transition-colors"><Printer className="w-5 h-5" /> พิมพ์รายงาน (A4 / PDF)</button>
           </div>
           
           <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-md print-container print:p-0 print:border-none print:shadow-none print-full-width">
