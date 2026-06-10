@@ -2,7 +2,8 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- ป้องกันการ Zoom อัตโนมัติใน iOS เมื่อกด input -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบรายงานเวรประจำวันโรงเรียน</title>
   
   <!-- Tailwind CSS -->
@@ -11,8 +12,10 @@
   <!-- FontAwesome for Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
+  <!-- html5-qrcode for In-App Live QR Code Scanning -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  
   <style>
-    /* CSS Animations and Print Styles */
     @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
     
@@ -23,23 +26,25 @@
       table { border-collapse: collapse !important; width: 100% !important; }
       th, td { border: 1px solid #000 !important; padding: 6px 8px !important; }
     }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
   </style>
 
   <!-- React & ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- Babel Standalone (For processing JSX in browser) -->
+  <!-- Babel Standalone -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body class="bg-gray-100 font-sans text-gray-800">
+<body class="bg-slate-50 font-sans text-slate-800 antialiased selection:bg-indigo-200 selection:text-indigo-900">
   
-  <!-- Root element for React -->
   <div id="root"></div>
 
-  <!-- React Application Code -->
   <script type="text/babel" data-type="module">
-    // --- 1. Firebase ES Module Imports ---
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
     import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js';
     import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
@@ -49,7 +54,7 @@
 
     const { useState, useEffect, useRef } = React;
 
-    // --- 2. Icons Components (FontAwesome adapters) ---
+    // --- Icons Setup ---
     const FAIcon = ({ icon, className }) => <i className={`${icon} ${className || ''}`} style={{ fontSize: '1.1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></i>;
     
     const Camera = ({ className }) => <FAIcon icon="fas fa-camera" className={className} />;
@@ -61,6 +66,7 @@
     const Settings = ({ className }) => <FAIcon icon="fas fa-cog" className={className} />;
     const FileText = ({ className }) => <FAIcon icon="fas fa-file-alt" className={className} />;
     const User = ({ className }) => <FAIcon icon="fas fa-user" className={className} />;
+    const Users = ({ className }) => <FAIcon icon="fas fa-users" className={className} />;
     const Shield = ({ className }) => <FAIcon icon="fas fa-shield-alt" className={className} />;
     const ImageIcon = ({ className }) => <FAIcon icon="fas fa-image" className={className} />;
     const Plus = ({ className }) => <FAIcon icon="fas fa-plus" className={className} />;
@@ -74,9 +80,10 @@
     const Lock = ({ className }) => <FAIcon icon="fas fa-lock" className={className} />;
     const Key = ({ className }) => <FAIcon icon="fas fa-key" className={className} />;
     const LogOut = ({ className }) => <FAIcon icon="fas fa-sign-out-alt" className={className} />;
-    const ChevronRight = ({ className }) => <FAIcon icon="fas fa-chevron-right" className={className} />;
+    const Info = ({ className }) => <FAIcon icon="fas fa-info-circle" className={className} />;
+    const FileCsv = ({ className }) => <FAIcon icon="fas fa-file-csv" className={className} />;
 
-    // --- 3. Firebase Configuration (Production - Teppitak School) ---
+    // --- Firebase Configuration ---
     const firebaseConfig = {
       apiKey: "AIzaSyDNwMXX7sewiMGAwI3StFssKbApbEsrGZ0",
       authDomain: "teppitakschool-8ec4f.firebaseapp.com",
@@ -89,19 +96,16 @@
 
     const app = initializeApp(firebaseConfig);
     let analytics;
-    if (typeof window !== 'undefined') {
-      analytics = getAnalytics(app);
-    }
+    if (typeof window !== 'undefined') analytics = getAnalytics(app);
     const auth = getAuth(app);
     const db = getFirestore(app);
-
     const dutyAppId = "teppitakschool"; 
 
-    // --- 4. Constants & Role Definitions ---
+    // --- System Constants ---
     const SHIFTS = [
-      { id: 'morning', label: 'เช้า (ก่อนเข้าเรียน)', time: '06.30 - 08.00 น.' },
-      { id: 'lunch', label: 'พักเช้า - กลางวัน', time: '11.30 - 12.30 น.' },
-      { id: 'evening', label: 'เย็นหลังเลิกเรียน', time: '15.30 - 17.00 น.' }
+      { id: 'morning', label: 'เช้า (ก่อนเรียน)', time: '06.30 - 08.00 น.', icon: 'fas fa-sun', color: 'text-amber-500', bg: 'bg-amber-50' },
+      { id: 'lunch', label: 'พักเช้า-กลางวัน', time: '11.30 - 12.30 น.', icon: 'fas fa-hamburger', color: 'text-orange-500', bg: 'bg-orange-50' },
+      { id: 'evening', label: 'เย็นหลังเลิกเรียน', time: '15.30 - 17.00 น.', icon: 'fas fa-moon', color: 'text-indigo-500', bg: 'bg-indigo-50' }
     ];
 
     const ROLES = {
@@ -109,7 +113,7 @@
       INSPECTOR: 'ผู้ตรวจเวร',
       HEAD: 'หัวหน้าฝ่าย',
       EXECUTIVE: 'ผู้บริหาร',
-      ADMIN: 'แอดมิน (ผู้ดูแลระบบ)'
+      ADMIN: 'แอดมิน (ดูแลระบบ)'
     };
 
     const ADMIN_PIN = '9999';
@@ -121,18 +125,42 @@
       if (!timestamp) return false;
       const date = new Date(timestamp);
       const today = new Date();
-      return date.getDate() === today.getDate() &&
-             date.getMonth() === today.getMonth() &&
-             date.getFullYear() === today.getFullYear();
+      return date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
     };
 
-    // --- 5. Main React Application ---
+    // --- CSV Export Helper ---
+    const exportToCSV = (reports, dutyPoints) => {
+      const headers = ['วันที่และเวลา', 'จุดตรวจเวร', 'ช่วงเวลา', 'ผู้ปฏิบัติเวร', 'สถานะ', 'รายละเอียด', 'พิกัด GPS'];
+      const rows = reports.map(r => {
+        const date = new Date(r.timestamp).toLocaleString('th-TH');
+        const pointName = dutyPoints.find(p => p.id === r.pointId)?.name || 'ไม่ระบุ';
+        const shift = SHIFTS.find(s => s.id === r.shift)?.label || r.shift;
+        const status = r.status === 'normal' ? 'ปกติ' : 'ผิดปกติ';
+        const detail = (r.detail || '').replace(/,/g, ' '); // Remove commas to prevent CSV breaks
+        const gps = (r.gps && r.gps.lat) ? `${r.gps.lat} ${r.gps.lng}` : '-';
+        return [date, pointName, shift, r.userName, status, detail, gps];
+      });
+
+      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `รายงานเวรโรงเรียน_${new Date().toLocaleDateString('th-TH').replace(/\//g,'-')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // ==========================================
+    // MAIN APP COMPONENT
+    // ==========================================
     function App() {
       const [user, setUser] = useState(null);
       const [activeRole, setActiveRole] = useState(ROLES.REPORTER);
       const [dutyPoints, setDutyPoints] = useState([]);
       const [reports, setReports] = useState([]);
-      const [dailyComments, setDailyComments] = useState([]); // บันทึกความคิดเห็นแยกตามวัน
+      const [dailyComments, setDailyComments] = useState([]); 
+      const [teachers, setTeachers] = useState([]); // New Feature: Teacher DB
       const [loading, setLoading] = useState(true);
       const [errorMsg, setErrorMsg] = useState('');
       
@@ -143,325 +171,163 @@
 
       const [scannedPoint, setScannedPoint] = useState(null);
       const [teacherName, setTeacherName] = useState('');
-
-      // State สำหรับเก็บข้อมูลรูปขยายระดับบนสุด (ป้องกันปัญหากล้อง/ทรานส์ฟอร์มขยับสั่นเบี้ยว)
       const [previewImage, setPreviewImage] = useState(null);
 
       const triggerToast = (message, type = 'success') => {
         setToast({ show: true, message, type });
-        setTimeout(() => {
-          setToast(prev => ({ ...prev, show: false }));
-        }, 4000);
+        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
       };
 
       const triggerConfirm = (message, action) => {
         setConfirmModal({
-          show: true,
-          message,
-          onConfirm: () => {
-            action();
-            setConfirmModal({ show: false, message: '', onConfirm: null });
-          }
+          show: true, message,
+          onConfirm: () => { action(); setConfirmModal({ show: false, message: '', onConfirm: null }); }
         });
       };
 
       const handleLogin = (e) => {
         e.preventDefault();
-        if (pinInput === ADMIN_PIN) {
-          setActiveRole(ROLES.ADMIN);
-          setShowLoginModal(false);
-          setPinInput('');
-          triggerToast('เข้าสู่ระบบสิทธิ์ "แอดมิน" สำเร็จ', 'success');
-        } else if (pinInput === EXECUTIVE_PIN) {
-          setActiveRole(ROLES.EXECUTIVE);
-          setShowLoginModal(false);
-          setPinInput('');
-          triggerToast('เข้าสู่ระบบสิทธิ์ "ผู้บริหาร" สำเร็จ', 'success');
-        } else if (pinInput === HEAD_PIN) {
-          setActiveRole(ROLES.HEAD);
-          setShowLoginModal(false);
-          setPinInput('');
-          triggerToast('เข้าสู่ระบบสิทธิ์ "หัวหน้าฝ่าย" สำเร็จ', 'success');
-        } else if (pinInput === INSPECTOR_PIN) {
-          setActiveRole(ROLES.INSPECTOR);
-          setShowLoginModal(false);
-          setPinInput('');
-          triggerToast('เข้าสู่ระบบสิทธิ์ "ผู้ตรวจเวร" สำเร็จ', 'success');
-        } else {
-          triggerToast('รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่', 'error');
-          setPinInput('');
-        }
-      };
-
-      const handleLogout = () => {
-        setActiveRole(ROLES.REPORTER);
-        triggerToast('ออกจากระบบ กลับสู่หน้าสำหรับผู้รายงานเวร', 'success');
+        if (pinInput === ADMIN_PIN) { setActiveRole(ROLES.ADMIN); triggerToast('เข้าสู่ระบบ "แอดมิน" สำเร็จ', 'success'); }
+        else if (pinInput === EXECUTIVE_PIN) { setActiveRole(ROLES.EXECUTIVE); triggerToast('เข้าสู่ระบบ "ผู้บริหาร" สำเร็จ', 'success'); }
+        else if (pinInput === HEAD_PIN) { setActiveRole(ROLES.HEAD); triggerToast('เข้าสู่ระบบ "หัวหน้าฝ่าย" สำเร็จ', 'success'); }
+        else if (pinInput === INSPECTOR_PIN) { setActiveRole(ROLES.INSPECTOR); triggerToast('เข้าสู่ระบบ "ผู้ตรวจเวร" สำเร็จ', 'success'); }
+        else { triggerToast('รหัส PIN ไม่ถูกต้อง', 'error'); setPinInput(''); return; }
+        setShowLoginModal(false); setPinInput('');
       };
 
       useEffect(() => {
-        const initAuth = async () => {
-          try {
-            await signInAnonymously(auth);
-          } catch (err) {
-            console.error("Auth Error:", err);
-            setErrorMsg("ไม่สามารถเชื่อมต่อระบบยืนยันตัวตนได้ กรุณาตรวจสอบการตั้งค่า Authentication ใน Firebase");
-          }
-        };
+        const initAuth = async () => { try { await signInAnonymously(auth); } catch (err) { setErrorMsg("ไม่สามารถเชื่อมต่อระบบยืนยันตัวตนได้"); } };
         initAuth();
-
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          setLoading(false);
-        });
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoading(false); });
         return () => unsubscribe();
       }, []);
 
       useEffect(() => {
         if (!user) return;
+        const unsubPoints = onSnapshot(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints'), (snapshot) => {
+          setDutyPoints(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        const unsubReports = onSnapshot(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports'), (snapshot) => {
+          const repData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          repData.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          setReports(repData);
+        });
+        const unsubComments = onSnapshot(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dailyComments'), (snapshot) => {
+          setDailyComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        const unsubTeachers = onSnapshot(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'teachers'), (snapshot) => {
+          const teacherData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          teacherData.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+          setTeachers(teacherData);
+        });
 
-        const pointsRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints');
-        const unsubscribePoints = onSnapshot(pointsRef, (snapshot) => {
-          const pointsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setDutyPoints(pointsData);
-        }, (err) => console.error("Error fetching points:", err));
-
-        const reportsRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports');
-        const unsubscribeReports = onSnapshot(reportsRef, (snapshot) => {
-          const reportsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          reportsData.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          setReports(reportsData);
-        }, (err) => console.error("Error fetching reports:", err));
-
-        // ดักฟังการอัปเดตความคิดเห็นผู้ตรวจเวร/ผู้บริหาร
-        const commentsRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dailyComments');
-        const unsubscribeComments = onSnapshot(commentsRef, (snapshot) => {
-          const commentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setDailyComments(commentsData);
-        }, (err) => console.error("Error fetching daily comments:", err));
-
-        return () => {
-          unsubscribePoints();
-          unsubscribeReports();
-          unsubscribeComments();
-        };
+        return () => { unsubPoints(); unsubReports(); unsubComments(); unsubTeachers(); };
       }, [user]);
 
       useEffect(() => {
         if (dutyPoints.length === 0) return;
         const params = new URLSearchParams(window.location.search);
         const pointIdParam = params.get('pointId');
-        
         if (pointIdParam) {
           const matchedPoint = dutyPoints.find(p => p.id === pointIdParam);
           if (matchedPoint) {
-            setScannedPoint(matchedPoint);
-            setActiveRole(ROLES.REPORTER);
-            triggerToast(`เข้าสู่จุดลงเวลา: ${matchedPoint.name}`, 'success');
+            setScannedPoint(matchedPoint); setActiveRole(ROLES.REPORTER);
+            triggerToast(`สแกนเจอจุดเวร: ${matchedPoint.name}`, 'success');
             window.history.replaceState({}, document.title, window.location.pathname);
           }
         }
       }, [dutyPoints]);
 
-      if (loading) {
-        return (
-          <div className="flex items-center justify-center h-screen bg-gray-50">
-            <div className="text-center">
-              <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <div className="text-xl font-semibold text-gray-600">กำลังเชื่อมต่อฐานข้อมูล...</div>
-            </div>
-          </div>
-        );
-      }
+      if (loading) return ( <div className="flex items-center justify-center h-screen bg-slate-50"><div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div> );
 
       return (
-        <div className="min-h-screen bg-gray-100 font-sans text-gray-800 flex flex-col justify-between">
+        <div className="min-h-[100dvh] bg-slate-50 flex flex-col">
           <header className="bg-indigo-700 shadow-md sticky top-0 z-40 no-print">
             <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between text-white">
-              <div className="flex items-center gap-2">
-                <Shield className="w-7 h-7 text-indigo-200" />
-                <h1 className="font-bold text-lg hidden sm:block">ระบบรายงานเวรประจำวัน</h1>
-                <h1 className="font-bold text-lg sm:hidden">ระบบเวร</h1>
+              <div className="flex items-center gap-2.5">
+                <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm"><Shield className="w-6 h-6 text-white" /></div>
+                <h1 className="font-bold text-lg hidden sm:block tracking-wide">ระบบรายงานเวรประจำวัน</h1>
+                <h1 className="font-bold text-lg sm:hidden tracking-wide">ระบบเวร</h1>
               </div>
               
               <div className="flex items-center gap-3">
                 {activeRole === ROLES.REPORTER ? (
-                  <button 
-                    onClick={() => setShowLoginModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-800 hover:bg-indigo-900 rounded-md text-sm font-medium transition-colors border border-indigo-600"
-                  >
+                  <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-800/80 hover:bg-indigo-900 rounded-full text-sm font-semibold transition-all shadow-sm border border-indigo-500/50">
                     <Key className="w-4 h-4" /> <span className="hidden sm:inline">สำหรับเจ้าหน้าที่</span>
                   </button>
                 ) : (
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm font-semibold bg-indigo-600 px-3 py-1 rounded-full border border-indigo-500">
-                      สิทธิ์: {activeRole}
-                    </span>
-                    <button 
-                      onClick={handleLogout}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-md text-sm font-medium transition-colors"
-                    >
-                      <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">ออกจากระบบ</span>
-                    </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/20">{activeRole}</span>
+                    <button onClick={() => {setActiveRole(ROLES.REPORTER); triggerToast('ออกจากระบบเรียบร้อย', 'success');}} className="flex items-center justify-center w-9 h-9 bg-red-500 hover:bg-red-600 rounded-full text-sm transition-all shadow-sm"><LogOut className="w-4 h-4" /></button>
                   </div>
                 )}
               </div>
             </div>
           </header>
 
-          <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-grow print:p-0 print:max-w-full">
-            {errorMsg && (
-              <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-md no-print">
-                {errorMsg}
-              </div>
-            )}
+          <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-grow print:p-0 print:max-w-full pb-24">
+            {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl flex gap-3 shadow-sm no-print"><AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" /><span className="text-sm font-medium">{errorMsg}</span></div>}
 
-            {/* ROUTING CORRESPONDING VIEWS */}
-            {activeRole === ROLES.REPORTER && (
-              <ReporterView 
-                user={user} 
-                dutyPoints={dutyPoints} 
-                reports={reports} 
-                scannedPoint={scannedPoint}
-                setScannedPoint={setScannedPoint}
-                triggerToast={triggerToast}
-                teacherName={teacherName}
-                setTeacherName={setTeacherName}
-                onViewImage={setPreviewImage}
-              />
-            )}
-            {(activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD || activeRole === ROLES.EXECUTIVE) && (
-              <InspectorView 
-                dutyPoints={dutyPoints} 
-                reports={reports} 
-                dailyComments={dailyComments}
-                triggerToast={triggerToast} 
-                activeRole={activeRole} 
-                onViewImage={setPreviewImage}
-              />
-            )}
-            {activeRole === ROLES.ADMIN && (
-              <AdminView 
-                dutyPoints={dutyPoints} 
-                reports={reports} 
-                dailyComments={dailyComments}
-                triggerToast={triggerToast} 
-                triggerConfirm={triggerConfirm} 
-              />
-            )}
+            {activeRole === ROLES.REPORTER && <ReporterView user={user} dutyPoints={dutyPoints} reports={reports} scannedPoint={scannedPoint} setScannedPoint={setScannedPoint} triggerToast={triggerToast} teacherName={teacherName} setTeacherName={setTeacherName} onViewImage={setPreviewImage} teachers={teachers} />}
+            {(activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD || activeRole === ROLES.EXECUTIVE) && <InspectorView dutyPoints={dutyPoints} reports={reports} dailyComments={dailyComments} triggerToast={triggerToast} activeRole={activeRole} onViewImage={setPreviewImage} />}
+            {activeRole === ROLES.ADMIN && <AdminView dutyPoints={dutyPoints} reports={reports} dailyComments={dailyComments} teachers={teachers} triggerToast={triggerToast} triggerConfirm={triggerConfirm} />}
           </main>
 
+          {/* Login Modal */}
           {showLoginModal && (
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-scaleIn">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-                <div className="flex justify-between items-center mb-5">
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <Key className="w-5 h-5 text-indigo-600" /> เข้าสู่ระบบเจ้าหน้าที่
-                  </h3>
-                  <button onClick={() => {setShowLoginModal(false); setPinInput('');}} className="text-gray-400 hover:text-gray-600 p-1 bg-gray-100 rounded-full">
-                    <X className="w-5 h-5" />
-                  </button>
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><div className="p-2 bg-indigo-100 rounded-lg"><Key className="w-5 h-5 text-indigo-600" /></div> เข้าสู่ระบบหลังบ้าน</h3>
+                  <button onClick={() => {setShowLoginModal(false); setPinInput('');}} className="text-slate-400 hover:text-slate-600 p-1.5 bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
                 </div>
-                
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">รหัส PIN 4 หลัก</label>
-                    <input 
-                      type="password" 
-                      value={pinInput}
-                      onChange={(e) => setPinInput(e.target.value)}
-                      placeholder="****"
-                      maxLength={4}
-                      autoFocus
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-center text-xl tracking-[1em] font-bold"
-                    />
+                    <input type="password" pattern="[0-9]*" inputMode="numeric" value={pinInput} onChange={(e) => setPinInput(e.target.value)} placeholder="PIN 4 หลัก" maxLength={4} autoFocus className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:ring-4 focus:border-indigo-500 text-center text-3xl tracking-[0.5em] font-bold outline-none" />
                   </div>
-                  <button 
-                    type="submit"
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors mt-2"
-                  >
-                    ยืนยันการเข้าสู่ระบบ
-                  </button>
+                  <button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-all">ยืนยัน</button>
                 </form>
               </div>
             </div>
           )}
 
-          {}
-          {/* ป้องกันปัญหา Fixed หลุดจากหน้าจอ (ตรึงอยู่กลางจอเสมอแม้เลื่อนหน้าลงมา) */}
+          {/* Lightbox Modal */}
           {previewImage && (
-            <div 
-              className="fixed inset-0 bg-black/65 z-[100] flex items-center justify-center p-4 backdrop-blur-sm no-print"
-              onClick={() => setPreviewImage(null)}
-            >
-              <div 
-                className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scaleIn border border-gray-100 flex flex-col relative"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Modal Header */}
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                  <h4 className="font-bold text-gray-800 flex items-center gap-2 text-md">
-                    <MapPin className="text-indigo-600" /> {previewImage.pointName}
-                  </h4>
-                  <button 
-                    onClick={() => setPreviewImage(null)}
-                    className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-200 rounded-full transition-colors flex items-center justify-center"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+            <div className="fixed inset-0 bg-slate-900/80 z-[100] flex items-center justify-center p-4 backdrop-blur-md no-print" onClick={() => setPreviewImage(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scaleIn flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                  <h4 className="font-bold text-slate-800 flex items-center gap-2 text-md"><MapPin className="text-indigo-600" /> {previewImage.pointName}</h4>
+                  <button onClick={() => setPreviewImage(null)} className="text-slate-400 p-1.5 bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
                 </div>
-                
-                {/* Modal Image Body (ตรึงกึ่งกลาง สว่าง คมชัด) */}
-                <div className="bg-gray-950 flex justify-center items-center h-80 sm:h-96">
-                  <img 
-                    src={previewImage.url} 
-                    alt="Expanded Watermarked View" 
-                    className="max-w-full max-h-full object-contain" 
-                  />
+                <div className="bg-black flex justify-center items-center relative">
+                  <img src={previewImage.url} alt="Expanded View" className="max-w-full max-h-[60vh] object-contain" />
                 </div>
-                
-                {/* Modal Footer */}
-                <div className="p-4 border-t border-gray-100 bg-gray-50 text-center space-y-1">
-                  <p className="text-sm font-semibold text-gray-700 flex items-center justify-center gap-1">
-                    <Clock className="w-4 h-4 text-indigo-500" /> {previewImage.timeString}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    ผู้ปฏิบัติเวร: {previewImage.userName}
-                  </p>
+                <div className="p-4 bg-slate-50 space-y-1.5">
+                  <p className="text-sm font-bold text-slate-700 flex items-center gap-2"><Clock className="w-4 h-4 text-indigo-500" /> {previewImage.timeString}</p>
+                  <p className="text-sm text-slate-600 flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> ผู้ปฏิบัติเวร: <span className="font-semibold">{previewImage.userName}</span></p>
+                  {previewImage.gps && <p className="text-xs text-slate-400 flex items-center gap-2"><MapPin className="w-4 h-4" /> พิกัดระบบ: {previewImage.gps.lat}, {previewImage.gps.lng}</p>}
                 </div>
               </div>
             </div>
           )}
 
+          {/* Premium Toasts & Confirm Modals */}
           {toast.show && (
-            <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 p-4 rounded-lg shadow-xl text-white animate-bounce transition-all duration-300 bg-gray-900 border border-gray-800">
-              {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-green-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
-              <span className="text-sm font-medium">{toast.message}</span>
-              <button onClick={() => setToast(prev => ({ ...prev, show: false }))} className="text-gray-400 hover:text-white ml-2">
-                <X className="w-4 h-4" />
-              </button>
+            <div className="fixed top-20 right-4 sm:top-auto sm:bottom-6 sm:right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-white animate-scaleIn bg-slate-800 border border-slate-700">
+              {toast.type === 'success' ? <CheckCircle className="w-6 h-6 text-green-400 flex-shrink-0" /> : <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0" />}
+              <span className="text-sm font-medium leading-tight">{toast.message}</span>
             </div>
           )}
 
           {confirmModal.show && (
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-scaleIn">
-              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" /> ยืนยันการดำเนินการ
-                </h3>
-                <p className="text-gray-600 text-sm mb-6">{confirmModal.message}</p>
-                <div className="flex gap-3 justify-end">
-                  <button 
-                    onClick={() => setConfirmModal({ show: false, message: '', onConfirm: null })}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button 
-                    onClick={confirmModal.onConfirm}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow"
-                  >
-                    ยืนยัน
-                  </button>
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn border border-slate-100">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mb-4"><AlertTriangle className="w-6 h-6 text-amber-600" /></div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">ยืนยันการดำเนินการ</h3>
+                <p className="text-slate-600 text-sm mb-6 leading-relaxed">{confirmModal.message}</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setConfirmModal({ show: false, message: '', onConfirm: null })} className="flex-1 py-2.5 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl">ยกเลิก</button>
+                  <button onClick={confirmModal.onConfirm} className="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl shadow-md">ยืนยัน</button>
                 </div>
               </div>
             </div>
@@ -470,151 +336,126 @@
       );
     }
 
-    // ============================================================================
-    // REPORTER VIEW (STRICT QR CAMERA MODE)
-    // ============================================================================
-    function ReporterView({ user, dutyPoints, reports, scannedPoint, setScannedPoint, triggerToast, teacherName, setTeacherName, onViewImage }) {
+    // ==========================================
+    // REPORTER VIEW
+    // ==========================================
+    function ReporterView({ user, dutyPoints, reports, scannedPoint, setScannedPoint, triggerToast, teacherName, setTeacherName, onViewImage, teachers }) {
       const [activeTab, setActiveTab] = useState('scan'); 
       const [selectedPoint, setSelectedPoint] = useState(null);
+      const [isScanning, setIsScanning] = useState(false);
+      const scannerRef = useRef(null);
 
-      useEffect(() => {
-        if (scannedPoint) setSelectedPoint(scannedPoint);
-      }, [scannedPoint]);
-
+      useEffect(() => { if (scannedPoint) setSelectedPoint(scannedPoint); }, [scannedPoint]);
+      useEffect(() => { return () => { if (scannerRef.current) scannerRef.current.stop().catch(()=>{}); }; }, []);
+      
       const myReports = reports.filter(r => r.userId === user.uid);
+      useEffect(() => { if (myReports.length > 0 && !teacherName) setTeacherName(myReports[0].userName); }, [myReports, teacherName, setTeacherName]);
 
-      useEffect(() => {
-        if (myReports.length > 0 && !teacherName) {
-          setTeacherName(myReports[0].userName);
-        }
-      }, [myReports, teacherName, setTeacherName]);
+      const startInAppScanner = () => {
+        setIsScanning(true);
+        setTimeout(() => {
+          try {
+            const html5QrCode = new Html5Qrcode("in-app-qr-reader");
+            scannerRef.current = html5QrCode;
+            html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } },
+              (decodedText) => {
+                let pointId = decodedText;
+                if (decodedText.includes('pointId=')) {
+                  try { pointId = new URL(decodedText).searchParams.get('pointId'); } catch (e) { const m = decodedText.match(/pointId=([^&]+)/); if (m) pointId = m[1]; }
+                }
+                const matchedPoint = dutyPoints.find(p => p.id === pointId);
+                if (matchedPoint) { setSelectedPoint(matchedPoint); triggerToast(`พบจุดเวร: ${matchedPoint.name}`, 'success'); stopInAppScanner(); } 
+                else { triggerToast('QR Code ไม่ใช่จุดลงเวลาของโรงเรียน', 'error'); }
+              }, () => {}
+            ).catch(err => { triggerToast("ไม่สามารถเปิดกล้องสแกนได้ กรุณาอนุญาตสิทธิ์เบราว์เซอร์", "error"); setIsScanning(false); });
+          } catch (e) { setIsScanning(false); }
+        }, 150);
+      };
+
+      const stopInAppScanner = () => {
+        if (scannerRef.current) { scannerRef.current.stop().then(() => { setIsScanning(false); scannerRef.current = null; }).catch(() => setIsScanning(false)); } 
+        else { setIsScanning(false); }
+      };
 
       return (
-        <div className="space-y-6">
-          <div className="flex gap-4 border-b border-gray-200 no-print">
-            <button 
-              onClick={() => { setActiveTab('scan'); setSelectedPoint(null); setScannedPoint(null); }}
-              className={`pb-2 px-1 font-bold text-sm transition-colors ${activeTab === 'scan' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              ลงเวลาเข้าเวร (ถ่ายภาพสด)
-            </button>
-            <button 
-              onClick={() => setActiveTab('history')}
-              className={`pb-2 px-1 font-bold text-sm transition-colors ${activeTab === 'history' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              ประวัติของฉัน ({myReports.length})
-            </button>
+        <div className="space-y-5 max-w-lg mx-auto">
+          <div className="bg-slate-200/70 p-1.5 rounded-2xl flex gap-1 shadow-inner no-print">
+            <button onClick={() => { setActiveTab('scan'); setSelectedPoint(null); setScannedPoint(null); stopInAppScanner(); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'scan' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}><Camera className="mr-1.5" /> ลงเวลา</button>
+            <button onClick={() => { setActiveTab('history'); stopInAppScanner(); }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'history' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}><FileText className="mr-1.5" /> ประวัติ ({myReports.length})</button>
           </div>
 
           {activeTab === 'scan' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="animate-scaleIn">
               {!selectedPoint ? (
-                <div className="p-10 text-center space-y-6 min-h-[300px] flex flex-col justify-center animate-scaleIn">
-                  <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto">
-                    <QrCode className="w-12 h-12 text-indigo-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-800">โปรดสแกน QR Code ประจำจุด</h2>
-                    <p className="text-gray-500 mt-3 text-sm max-w-sm mx-auto bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                      <AlertTriangle className="w-4 h-4 inline text-yellow-600 mb-0.5 mr-1" />
-                      เพื่อป้องกันการลงเวลาผิดพลาด ระบบไม่อนุญาตให้เลือกจุดเอง กรุณาใช้กล้องมือถือสแกน QR Code ณ จุดตรวจเวรเพื่อดำเนินการต่อ
-                    </p>
-                  </div>
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8 sm:p-10 text-center flex flex-col items-center justify-center min-h-[50vh]">
+                  <div className="relative mb-6"><div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-50"></div><div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center relative border-4 border-white shadow-sm"><QrCode className="w-10 h-10 text-indigo-600" /></div></div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">สแกนจุดตรวจเวร</h2>
+                  <p className="text-slate-500 text-sm mb-8 px-4 leading-relaxed">ระบบต้องการสแกน QR Code ประจำจุด<br/>เพื่อป้องกันความผิดพลาดในการลงเวลา</p>
+                  <button onClick={startInAppScanner} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 text-lg active:scale-95"><Camera className="text-white w-5 h-5" /> เปิดกล้องสแกน QR</button>
                 </div>
               ) : (
-                <ReportForm 
-                  user={user} 
-                  point={selectedPoint} 
-                  onCancel={() => { setSelectedPoint(null); setScannedPoint(null); }}
-                  onSuccess={() => {
-                    setSelectedPoint(null);
-                    setScannedPoint(null);
-                    setActiveTab('history');
-                    triggerToast('ส่งรายงานความคืบหน้าเข้าเวรสำเร็จแล้ว', 'success');
-                  }}
-                  triggerToast={triggerToast}
-                  teacherName={teacherName}
-                  setTeacherName={setTeacherName}
-                />
+                <ReportForm user={user} point={selectedPoint} onCancel={() => { setSelectedPoint(null); setScannedPoint(null); }} onSuccess={() => { setSelectedPoint(null); setScannedPoint(null); setActiveTab('history'); triggerToast('ส่งรายงานสำเร็จแล้ว', 'success'); }} triggerToast={triggerToast} teacherName={teacherName} setTeacherName={setTeacherName} teachers={teachers} />
               )}
             </div>
           )}
 
           {activeTab === 'history' && (
             <div className="space-y-4 animate-scaleIn">
-              <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-indigo-600" /> ประวัติของคุณ
-                </h2>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                  * ข้ามวันแล้วจะถูกล็อกแก้ไข
-                </span>
-              </div>
-              
-              {myReports.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-xl border border-gray-100 text-gray-400">
-                  ยังไม่มีประวัติการรายงานเวรในระบบ
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {myReports.map(report => (
-                    <ReportCard 
-                      key={report.id} 
-                      report={report} 
-                      dutyPoints={dutyPoints} 
-                      isOwner={true} 
-                      triggerToast={triggerToast} 
-                      teacherName={teacherName}
-                      setTeacherName={setTeacherName}
-                      onViewImage={onViewImage}
-                    />
-                  ))}
-                </div>
+              <div className="flex items-center justify-between px-2"><h2 className="text-lg font-bold text-slate-800">รายการประวัติของคุณ</h2><span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">แก้ไขได้เฉพาะวันนี้</span></div>
+              {myReports.length === 0 ? ( <div className="p-10 text-center bg-white rounded-3xl border border-slate-100 text-slate-400 border-dashed"><FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />คุณยังไม่มีประวัติการรายงานเวร</div> ) : (
+                <div className="grid gap-4">{myReports.map(report => <ReportCard key={report.id} report={report} dutyPoints={dutyPoints} isOwner={true} triggerToast={triggerToast} teacherName={teacherName} setTeacherName={setTeacherName} onViewImage={onViewImage} teachers={teachers} />)}</div>
               )}
+            </div>
+          )}
+
+          {isScanning && (
+            <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col p-4 backdrop-blur-sm animate-scaleIn">
+              <div className="flex justify-between items-center mb-4 mt-8 px-2"><h3 className="font-bold text-white text-lg flex items-center gap-2"><QrCode /> เล็ง QR ให้อยู่ในกรอบ</h3><button onClick={stopInAppScanner} className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white"><X className="w-6 h-6" /></button></div>
+              <div className="flex-1 flex items-center justify-center overflow-hidden rounded-3xl border-2 border-white/20"><div id="in-app-qr-reader" className="w-full max-w-md bg-black"></div></div>
+              <div className="mt-8 mb-12 text-center text-white/70 text-sm">กล้องจะทำการสแกนโดยอัตโนมัติ</div>
             </div>
           )}
         </div>
       );
     }
 
-    // ============================================================================
-    // REPORT FORM (WATERMARK CAMERA API VIA PHONE APP)
-    // ============================================================================
-    function ReportForm({ user, point, onCancel, onSuccess, existingReport = null, triggerToast, teacherName, setTeacherName }) {
+    function ReportForm({ user, point, onCancel, onSuccess, existingReport = null, triggerToast, teacherName, setTeacherName, teachers }) {
       const [shift, setShift] = useState(existingReport?.shift || SHIFTS[0].id);
       const [status, setStatus] = useState(existingReport?.status || 'normal');
       const [detail, setDetail] = useState(existingReport?.detail || '');
       const [photoUrl, setPhotoUrl] = useState(existingReport?.photoUrl || null);
       const [currentName, setCurrentName] = useState(existingReport?.userName || teacherName || '');
       const [isSubmitting, setIsSubmitting] = useState(false);
+      const [gpsData, setGpsData] = useState(existingReport?.gps || null);
       
       const fileInputRef = useRef(null);
 
+      // Fetch GPS on component mount if supported
+      useEffect(() => {
+        if (!existingReport && "geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition((position) => {
+            setGpsData({ lat: position.coords.latitude.toFixed(6), lng: position.coords.longitude.toFixed(6) });
+          }, (error) => { console.warn("GPS Denied or Error:", error); }, { enableHighAccuracy: true, timeout: 5000 });
+        }
+      }, [existingReport]);
+
       const applyWatermarkToImage = (imageSource, width, height) => {
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
-        
         ctx.drawImage(imageSource, 0, 0, width, height);
-
         const now = new Date();
         const timeStr = now.toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'medium' });
-        const text1 = `บันทึกเวลาถ่าย: ${timeStr} น.`;
-        const text2 = `สถานที่เข้าเวร: ${point.name}`;
-
-        const barHeight = Math.max(60, height * 0.12);
-        const fontSize = Math.max(14, height * 0.035);
-        
-        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-        ctx.fillRect(0, height - barHeight, width, barHeight);
-
+        const text1 = `บันทึก: ${timeStr} น.`;
+        const text2 = `สถานที่: ${point.name}`;
+        const barHeight = Math.max(70, height * 0.15);
+        const fontSize = Math.max(16, height * 0.04);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; ctx.fillRect(0, height - barHeight, width, barHeight);
         ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.fillStyle = "#FFD700"; 
-        ctx.fillText(text1, 20, height - barHeight / 2 - 5);
-        ctx.fillStyle = "#FFFFFF"; 
-        ctx.fillText(text2, 20, height - barHeight / 2 + fontSize + 5);
-
+        ctx.fillStyle = "#FFD700"; ctx.fillText(text1, 20, height - barHeight / 2 - 5);
+        ctx.fillStyle = "#FFFFFF"; ctx.fillText(text2, 20, height - barHeight / 2 + fontSize + 5);
         return canvas.toDataURL('image/jpeg', 0.8);
       };
 
@@ -622,470 +463,226 @@
         const file = e.target.files[0];
         if (file) {
           const reader = new FileReader();
-          reader.onload = (event) => {
+          reader.onload = (evt) => {
             const img = new Image();
             img.onload = () => {
-              const MAX_WIDTH = 1200;
-              let w = img.width;
-              let h = img.height;
-              if (w > MAX_WIDTH) {
-                h = Math.round((h * MAX_WIDTH) / w);
-                w = MAX_WIDTH;
-              }
-              const dataUrl = applyWatermarkToImage(img, w, h);
-              setPhotoUrl(dataUrl);
-              triggerToast("ประมวลผลรูปถ่ายและประทับตราน้ำเรียบร้อย", "success");
+              const MAX_W = 1200; let w = img.width, h = img.height;
+              if (w > MAX_W) { h = Math.round((h * MAX_W) / w); w = MAX_W; }
+              setPhotoUrl(applyWatermarkToImage(img, w, h));
             };
-            img.src = event.target.result;
+            img.src = evt.target.result;
           };
           reader.readAsDataURL(file);
         }
       };
 
       const handleSave = async (isDraft = false) => {
-        if (!currentName.trim()) {
-          triggerToast('กรุณาระบุชื่อ-สกุลผู้ปฏิบัติเวร', 'error');
-          return;
-        }
-        if (!photoUrl && !isDraft) {
-          triggerToast('บังคับถ่ายรูปเช็คอินหน้างานเพื่อยืนยันการลงเวลา', 'error');
-          return;
-        }
+        if (!currentName.trim()) return triggerToast('กรุณาระบุชื่อผู้ปฏิบัติเวร', 'error');
+        if (!photoUrl && !isDraft) return triggerToast('บังคับถ่ายรูปเช็คอินหน้างาน', 'error');
 
         setIsSubmitting(true);
         try {
           setTeacherName(currentName); 
-          
-          const reportData = {
-            userId: user.uid,
-            userName: currentName,
-            pointId: point.id,
-            shift: shift,
-            status: status,
-            detail: detail,
-            photoUrl: photoUrl,
-            isDraft: isDraft,
-            updatedAt: serverTimestamp(),
-          };
-
+          const reportData = { userId: user.uid, userName: currentName, pointId: point.id, shift, status, detail, photoUrl, isDraft, gps: gpsData, updatedAt: serverTimestamp() };
           if (existingReport) {
-            if (!checkIsToday(existingReport.timestamp)) {
-              triggerToast('ไม่อนุญาตให้แก้ไขรายงานที่ข้ามวันไปแล้ว', 'error');
-              setIsSubmitting(false);
-              return;
-            }
-            const docRef = doc(db, 'artifacts', dutyAppId, 'public', 'data', 'reports', existingReport.id);
-            await updateDoc(docRef, reportData);
+            if (!checkIsToday(existingReport.timestamp)) { triggerToast('ไม่สามารถแก้รายงานข้ามวันได้', 'error'); setIsSubmitting(false); return; }
+            await updateDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'reports', existingReport.id), reportData);
           } else {
             reportData.timestamp = Date.now();
-            const colRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports');
-            await addDoc(colRef, reportData);
+            await addDoc(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports'), reportData);
           }
           onSuccess();
-        } catch (error) {
-          console.error("Error saving:", error);
-          triggerToast("เกิดข้อผิดพลาดในการบันทึก", "error");
-        } finally {
-          setIsSubmitting(false);
-        }
+        } catch (error) { triggerToast("เกิดข้อผิดพลาดในการบันทึก", "error"); } 
+        finally { setIsSubmitting(false); }
       };
 
       return (
-        <div className="p-5 sm:p-6 bg-white rounded-xl">
-          <div className="flex items-center justify-between mb-6 border-b pb-4">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[85vh]">
+          <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between sticky top-0 z-10">
             <div>
-              <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1 w-max">
-                <Lock className="w-3 h-3" /> ล็อกพิกัดเวลาและภาพถ่าย
-              </span>
-              <h2 className="text-xl font-bold text-gray-800 mt-2 flex items-center gap-1">
-                <MapPin className="w-5 h-5 text-indigo-600" /> {point.name}
-              </h2>
+              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider mb-1 inline-block">จุดสแกน</span>
+              <h2 className="text-xl font-bold text-slate-800 leading-tight">{point.name}</h2>
             </div>
-            <button onClick={onCancel} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors">
-              <X className="w-6 h-6" />
-            </button>
+            <button onClick={onCancel} className="w-10 h-10 bg-white shadow-sm border border-slate-200 rounded-full flex items-center justify-center text-slate-500 active:scale-95"><X className="w-5 h-5" /></button>
           </div>
 
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">1. ชื่อ-สกุล ผู้ปฏิบัติเวร *</label>
-              <input
-                type="text"
-                value={currentName}
-                onChange={(e) => setCurrentName(e.target.value)}
-                placeholder="เช่น นายครูใจดี มีความรับผิดชอบ"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-indigo-50/30"
-              />
+          <div className="p-5 space-y-6 flex-grow pb-32">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><User className="w-4 h-4 text-slate-400"/> 1. ชื่อผู้เข้าเวร</label>
+              <input type="text" list="teacherList" value={currentName} onChange={(e) => setCurrentName(e.target.value)} placeholder="พิมพ์หรือเลือกชื่อของคุณ..." className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:border-indigo-500 font-medium outline-none" />
+              <datalist id="teacherList">{teachers.map(t => <option key={t.id} value={t.name} />)}</datalist>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">2. เลือกช่วงเวลา</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Clock className="w-4 h-4 text-slate-400"/> 2. รอบเวลาเวร</label>
+              <div className="grid grid-cols-1 gap-2">
                 {SHIFTS.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setShift(s.id)}
-                    className={`p-3 text-sm font-bold rounded-lg border text-center transition-all ${
-                      shift === s.id 
-                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500 shadow-sm' 
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {s.label}
+                  <button key={s.id} onClick={() => setShift(s.id)} className={`flex items-center p-3.5 rounded-2xl border-2 transition-all ${shift === s.id ? `${s.bg} border-${s.color.split('-')[1]}-500 shadow-sm` : 'bg-white border-slate-100 text-slate-500'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${shift === s.id ? s.color + ' bg-white shadow-sm' : 'bg-slate-50 text-slate-400'}`}><FAIcon icon={s.icon} /></div>
+                    <div className="text-left flex-1"><div className={`font-bold ${shift === s.id ? 'text-slate-800' : ''}`}>{s.label}</div><div className="text-xs opacity-80">{s.time}</div></div>
+                    {shift === s.id && <CheckCircle className={`w-5 h-5 ${s.color}`} />}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                3. ถ่ายรูปเช็คอินหน้างาน <span className="text-red-500 font-normal">(กล้องจะเปิดอัตโนมัติ)</span>
-              </label>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Camera className="w-4 h-4 text-slate-400"/> 3. ถ่ายภาพยืนยัน</label>
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
+              {photoUrl ? (
+                <div className="relative rounded-2xl overflow-hidden shadow-inner border border-slate-200 bg-slate-900 aspect-video flex items-center justify-center">
+                  <img src={photoUrl} alt="Check-in Watermarked" className="w-full h-full object-cover opacity-90" />
+                  <button onClick={() => setPhotoUrl(null)} className="absolute top-3 right-3 bg-white/90 text-red-600 px-3 py-2 rounded-xl shadow-lg backdrop-blur flex items-center gap-1.5 font-bold text-sm active:scale-95"><Trash2 className="w-4 h-4" /> ถ่ายใหม่</button>
+                </div>
+              ) : (
+                <div onClick={() => fileInputRef.current?.click()} className="flex flex-col justify-center items-center p-8 border-2 border-slate-200 border-dashed rounded-2xl bg-slate-50 hover:bg-indigo-50 transition-all cursor-pointer group active:scale-[0.98]">
+                  <div className="w-16 h-16 bg-white rounded-full shadow-md flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Camera className="w-7 h-7 text-indigo-600" /></div>
+                  <span className="font-bold text-indigo-700 text-lg">เปิดกล้องถ่ายภาพ</span><p className="text-xs text-slate-400 mt-2 text-center">ระบบจะประทับเวลาและสถานที่ลงบนภาพอัตโนมัติ</p>
+                </div>
+              )}
+            </div>
 
-              <input 
-                ref={fileInputRef}
-                type="file" 
-                accept="image/*" 
-                capture="environment" 
-                onChange={handlePhotoCapture}
-                className="hidden" 
-              />
-
-              <div className="mt-1">
-                {photoUrl ? (
-                  <div className="relative w-full rounded-md overflow-hidden bg-gray-900 border-2 border-gray-300">
-                    <img src={photoUrl} alt="Check-in Watermarked" className="w-full h-auto object-contain" />
-                    <button 
-                      onClick={() => setPhotoUrl(null)}
-                      className="absolute top-3 right-3 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-md flex items-center gap-1 text-xs font-bold"
-                    >
-                      <Trash2 className="w-4 h-4" /> ถ่ายใหม่
-                    </button>
-                  </div>
-                ) : (
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col justify-center items-center px-6 py-10 border-2 border-gray-300 border-dashed rounded-lg bg-gray-50 hover:bg-indigo-50 transition-colors cursor-pointer group shadow-inner animate-pulse"
-                  >
-                    <div className="w-16 h-16 bg-white rounded-full shadow flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Camera className="h-8 w-8 text-indigo-600 text-2xl" />
-                    </div>
-                    <span className="font-bold text-indigo-700 text-lg">เปิดแอปกล้องเพื่อถ่ายภาพ</span>
-                    <p className="text-xs text-gray-500 mt-2 text-center">ภาพจะถูกประทับเวลาและสถานที่อัตโนมัติ</p>
-                  </div>
-                )}
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Info className="w-4 h-4 text-slate-400"/> 4. สถานการณ์</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setStatus('normal')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${status === 'normal' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-white border-slate-100 text-slate-400'}`}>
+                  <CheckCircle className={`w-8 h-8 ${status === 'normal' ? 'text-emerald-500' : ''}`} /><span className="font-bold text-sm">ปกติเรียบร้อย</span>
+                </button>
+                <button onClick={() => setStatus('abnormal')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${status === 'abnormal' ? 'bg-rose-50 border-rose-500 text-rose-700 shadow-sm' : 'bg-white border-slate-100 text-slate-400'}`}>
+                  <AlertTriangle className={`w-8 h-8 ${status === 'abnormal' ? 'text-rose-500' : ''}`} /><span className="font-bold text-sm">พบเหตุผิดปกติ</span>
+                </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">4. สรุปเหตุการณ์ปัจจุบัน</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer bg-green-50 px-4 py-2 rounded-lg border border-green-200">
-                  <input type="radio" value="normal" checked={status === 'normal'} onChange={(e) => setStatus(e.target.value)} className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-semibold text-green-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> เหตุการณ์ปกติ</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer bg-red-50 px-4 py-2 rounded-lg border border-red-200">
-                  <input type="radio" value="abnormal" checked={status === 'abnormal'} onChange={(e) => setStatus(e.target.value)} className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-semibold text-red-700 flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> ผิดปกติ</span>
-                </label>
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Edit3 className="w-4 h-4 text-slate-400"/> 5. รายละเอียด <span className="text-slate-400 font-normal text-xs ml-1">(บันทึกไว้เขียนทีหลังได้)</span></label>
+              <textarea rows={3} value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="พิมพ์รายละเอียดเพิ่มเติมที่นี่..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:border-indigo-500 font-medium outline-none resize-none" />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                5. รายละเอียดสถานการณ์ <span className="text-gray-400 font-normal">(บันทึกด่วนไว้เขียนทีหลัง "ภายในวันนี้" ได้)</span>
-              </label>
-              <textarea
-                rows={3}
-                value={detail}
-                onChange={(e) => setDetail(e.target.value)}
-                placeholder="ระบุรายละเอียดเหตุการณ์เพิ่มเติม..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-              />
-            </div>
-
-            <div className="pt-4 flex flex-col sm:flex-row gap-3 border-t">
-              <button
-                onClick={() => handleSave(false)}
-                disabled={isSubmitting}
-                className="flex-1 inline-flex justify-center items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors shadow-md"
-              >
-                <Save className="w-5 h-5" /> {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกส่งรายงานทางการ'}
-              </button>
-              
-              <button
-                onClick={() => handleSave(true)}
-                disabled={isSubmitting}
-                className="flex-1 inline-flex justify-center items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 rounded-md font-bold hover:bg-amber-100 transition-colors"
-              >
-                <Clock className="w-5 h-5" /> ถ่ายรูปไว้ก่อน (เขียนทีหลัง)
-              </button>
-            </div>
+          <div className="fixed sm:absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-slate-200 flex gap-3 z-20">
+            <button onClick={() => handleSave(true)} disabled={isSubmitting} className="w-14 h-14 sm:w-auto sm:px-6 bg-amber-100 text-amber-700 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95"><Clock className="w-6 h-6 sm:w-5 sm:h-5" /> <span className="hidden sm:inline">ร่างไว้ก่อน</span></button>
+            <button onClick={() => handleSave(false)} disabled={isSubmitting} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2 text-lg active:scale-95"><Save className="w-5 h-5" /> {isSubmitting ? 'รอสักครู่...' : 'บันทึกส่งรายงาน'}</button>
           </div>
         </div>
       );
     }
 
-    // --- Component: Card Report Item ---
-    function ReportCard({ report, dutyPoints, isOwner = false, triggerToast, teacherName, setTeacherName, onViewImage }) {
+    function ReportCard({ report, dutyPoints, isOwner = false, triggerToast, teacherName, setTeacherName, onViewImage, teachers }) {
       const [isEditing, setIsEditing] = useState(false);
       const point = dutyPoints.find(p => p.id === report.pointId);
       const shiftInfo = SHIFTS.find(s => s.id === report.shift);
-      
-      const timeString = new Date(report.timestamp).toLocaleString('th-TH', { 
-        dateStyle: 'medium', timeStyle: 'short' 
-      });
-
+      const timeString = new Date(report.timestamp).toLocaleString('th-TH', { timeStyle: 'short' });
       const isToday = checkIsToday(report.timestamp);
 
-      if (isEditing && isOwner && isToday) {
-        return (
-          <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
-            <ReportForm 
-              user={{ uid: report.userId }} 
-              point={point} 
-              onCancel={() => setIsEditing(false)} 
-              onSuccess={() => { setIsEditing(false); triggerToast('อัปเดตรายงานสำเร็จ', 'success'); }}
-              existingReport={report}
-              triggerToast={triggerToast}
-              teacherName={teacherName}
-              setTeacherName={setTeacherName}
-            />
-          </div>
-        );
-      }
+      if (isEditing && isOwner && isToday) return <div className="animate-scaleIn"><ReportForm user={{ uid: report.userId }} point={point} onCancel={() => setIsEditing(false)} onSuccess={() => { setIsEditing(false); triggerToast('อัปเดตสำเร็จ', 'success'); }} existingReport={report} triggerToast={triggerToast} teacherName={teacherName} setTeacherName={setTeacherName} teachers={teachers} /></div>;
 
       return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col sm:flex-row relative hover:shadow-md transition-shadow">
-          <div 
-            className="sm:w-48 h-48 sm:h-auto bg-gray-100 relative flex-shrink-0 group overflow-hidden cursor-pointer"
-            onClick={() => report.photoUrl && onViewImage({
-              url: report.photoUrl,
-              pointName: point?.name || 'จุดตรวจนิรนาม',
-              timeString: `${timeString} (${shiftInfo?.label})`,
-              userName: report.userName
-            })}
-            title="คลิกเพื่อขยายภาพ"
-          >
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col sm:flex-row relative hover:shadow-md transition-shadow">
+          <div className="sm:w-48 h-48 sm:h-auto bg-slate-100 relative flex-shrink-0 cursor-pointer group" onClick={() => report.photoUrl && onViewImage({ url: report.photoUrl, pointName: point?.name, timeString: `${timeString} น. (${shiftInfo?.label})`, userName: report.userName, gps: report.gps })}>
             {report.photoUrl ? (
-              <>
-                <img src={report.photoUrl} alt="Report" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-sm font-semibold">
-                  <FAIcon icon="fas fa-search-plus" className="mr-1.5 text-lg" /> คลิกเพื่อขยาย
-                </div>
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-50">
-                <ImageIcon className="w-10 h-10 text-3xl" />
-              </div>
-            )}
+              <React.Fragment>
+                <img src={report.photoUrl} alt="Report" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><span className="bg-white/90 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-full">ขยายภาพ</span></div>
+              </React.Fragment>
+            ) : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon className="w-12 h-12" /></div>}
+            {report.isDraft && <div className="absolute top-3 left-3 bg-amber-400 text-amber-900 text-xs font-bold px-2.5 py-1 rounded-md shadow-sm">ฉบับร่าง</div>}
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+          <div className="p-5 flex-1 flex flex-col justify-between bg-white">
             <div>
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="font-bold text-gray-800 text-lg">{point?.name || 'จุดตรวจนิรนาม'}</h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                    <Clock className="w-4 h-4" />
-                    <span>{timeString} ({shiftInfo?.label})</span>
-                  </div>
-                </div>
-                {report.status === 'normal' ? (
-                  <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-green-200">
-                    <CheckCircle className="w-3 h-3" /> ปกติ
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-red-200">
-                    <AlertTriangle className="w-3 h-3" /> ผิดปกติ
-                  </span>
-                )}
+              <div className="flex justify-between items-start mb-1">
+                <h3 className="font-bold text-slate-800 text-lg leading-tight">{point?.name || 'ไม่ระบุพิกัด'}</h3>
+                {report.status === 'normal' ? <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-100 flex items-center gap-1"><CheckCircle className="w-3 h-3"/> ปกติ</span> : <span className="bg-rose-50 text-rose-700 px-2.5 py-1 rounded-md text-xs font-bold border border-rose-100 flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> ผิดปกติ</span>}
               </div>
-              
-              <div className="mt-3">
-                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {report.detail || <span className="text-gray-400 italic">ลงบันทึกเวลาอย่างย่อไว้ ยังไม่ได้ระบุรายละเอียดประกอบเวร</span>}
-                </p>
-              </div>
+              <div className="text-sm font-semibold text-indigo-600 mb-3">{shiftInfo?.label} <span className="text-slate-400 font-normal">เวลา {timeString} น.</span></div>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-4"><p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{report.detail || <span className="text-slate-400 italic">ไม่มีรายละเอียดกำกับ</span>}</p></div>
             </div>
-
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="text-xs text-gray-500 flex items-center gap-1">
-                <User className="w-3.5 h-3.5" />
-                ผู้บันทึก: {report.userName}
-              </div>
-              
-              {isOwner && (
-                isToday ? (
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded hover:bg-indigo-100 font-semibold flex items-center gap-1 transition-colors"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" /> {report.isDraft ? 'เขียนรายละเอียดเพิ่มเติม' : 'แก้ไขรายงาน'}
-                  </button>
-                ) : (
-                  <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1.5 rounded font-semibold flex items-center gap-1">
-                    <Lock className="w-3.5 h-3.5" /> หมดเวลาแก้ไข
-                  </span>
-                )
-              )}
+            <div className="flex items-center justify-between mt-auto">
+              <div className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"><User className="w-3 h-3 text-slate-400"/> {report.userName}</div>
+              {isOwner && (isToday ? <button onClick={() => setIsEditing(true)} className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 active:scale-95"><Edit3 className="w-3 h-3" /> แก้ไข</button> : <span className="text-xs text-slate-400 flex items-center gap-1"><Lock className="w-3 h-3"/> ล็อกแล้ว</span>)}
             </div>
           </div>
         </div>
       );
     }
 
-    // ============================================================================
-    // INSPECTOR VIEW & COMMENT SUBMISSION ENGINE
-    // ============================================================================
+    // ==========================================
+    // INSPECTOR VIEW
+    // ==========================================
     function InspectorView({ dutyPoints, reports, dailyComments, triggerToast, activeRole, onViewImage }) {
       const [filterShift, setFilterShift] = useState('all');
       const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-      
-      // ฟอร์มกรอกข้อเสนอแนะประจำวัน
       const [commentText, setCommentText] = useState('');
       const [commenterName, setCommenterName] = useState('');
       const [isSavingComment, setIsSavingComment] = useState(false);
 
       const activeReports = reports.filter(r => new Date(r.timestamp).toISOString().split('T')[0] === selectedDate);
       const filteredReports = filterShift === 'all' ? activeReports : activeReports.filter(r => r.shift === filterShift);
-      const getMissingPoints = (shiftId) => {
-        const reportedIds = new Set(activeReports.filter(r => r.shift === shiftId).map(r => r.pointId));
-        return dutyPoints.filter(p => !reportedIds.has(p.id));
-      };
+      const getMissingPoints = (shiftId) => { const reportedIds = new Set(activeReports.filter(r => r.shift === shiftId).map(r => r.pointId)); return dutyPoints.filter(p => !reportedIds.has(p.id)); };
 
-      // ค้นหาคอมเมนต์ของวันที่เลือก
       const dayComment = dailyComments.find(c => c.id === selectedDate) || {};
-
       useEffect(() => {
-        // เมื่อเปลี่ยนวัน หรือเปลี่ยนสิทธิ์ ดึงข้อมูลคอมเมนต์ที่มีอยู่มาแสดงใน Input
-        if (activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD) {
-          setCommentText(dayComment.inspectorComment || '');
-          setCommenterName(dayComment.inspectorName || '');
-        } else if (activeRole === ROLES.EXECUTIVE) {
-          setCommentText(dayComment.executiveComment || '');
-          setCommenterName(dayComment.executiveName || '');
-        }
+        if (activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD) { setCommentText(dayComment.inspectorComment || ''); setCommenterName(dayComment.inspectorName || ''); } 
+        else if (activeRole === ROLES.EXECUTIVE) { setCommentText(dayComment.executiveComment || ''); setCommenterName(dayComment.executiveName || ''); }
       }, [selectedDate, dailyComments, activeRole]);
 
-      // บันทึกข้อเสนอแนะลงในเอกสารประจำวัน
       const handleSaveComment = async (e) => {
-        e.preventDefault();
-        setIsSavingComment(true);
+        e.preventDefault(); setIsSavingComment(true);
         try {
           const docRef = doc(db, 'artifacts', dutyAppId, 'public', 'data', 'dailyComments', selectedDate);
-          
           let updateObj = { updatedAt: serverTimestamp() };
-          if (activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD) {
-            updateObj.inspectorComment = commentText;
-            updateObj.inspectorName = commenterName;
-          } else if (activeRole === ROLES.EXECUTIVE) {
-            updateObj.executiveComment = commentText;
-            updateObj.executiveName = commenterName;
-          }
-
+          if (activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD) { updateObj.inspectorComment = commentText; updateObj.inspectorName = commenterName; } 
+          else { updateObj.executiveComment = commentText; updateObj.executiveName = commenterName; }
           await setDoc(docRef, updateObj, { merge: true });
-          triggerToast("บันทึกข้อเสนอแนะและข้อสั่งการลงในระบบเรียบร้อย", "success");
-        } catch (err) {
-          console.error("Error saving comment:", err);
-          triggerToast("เกิดข้อผิดพลาดในการบันทึก", "error");
-        } finally {
-          setIsSavingComment(false);
-        }
+          triggerToast("บันทึกข้อสั่งการเรียบร้อย", "success");
+        } catch (err) { triggerToast("เกิดข้อผิดพลาด", "error"); } finally { setIsSavingComment(false); }
       };
+
+      const expectedTotal = dutyPoints.length * 3;
+      const reportedTotal = activeReports.length;
+      const progressPercent = expectedTotal > 0 ? Math.round((reportedTotal / expectedTotal) * 100) : 0;
 
       return (
         <div className="space-y-6 animate-scaleIn">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl shadow-sm border border-gray-100 no-print">
-            <div>
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-indigo-600" /> แดชบอร์ดตรวจสอบสำหรับ {activeRole}
-              </h2>
-              <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                <Calendar className="w-4 h-4" /> 
-                {new Date(selectedDate).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
-                <label className="block text-xs text-gray-400 font-bold mb-1">เลือกวันที่ตรวจเวร</label>
-                <input 
-                  type="date" 
-                  value={selectedDate} 
-                  onChange={(e) => { setSelectedDate(e.target.value); triggerToast(`แสดงข้อมูลวันที่: ${e.target.value}`, 'success'); }} 
-                  className="border-gray-300 rounded-md text-sm shadow-sm px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500" 
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 font-bold mb-1">เลือกช่วงเวลา</label>
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                  <button onClick={() => setFilterShift('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${filterShift === 'all' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>ทั้งหมด</button>
-                  {SHIFTS.map(s => (
-                    <button key={s.id} onClick={() => setFilterShift(s.id)} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${filterShift === s.id ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>{s.label.split(' ')[0]}</button>
-                  ))}
-                </div>
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-5 no-print">
+            <div><h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Shield className="w-5 h-5 text-indigo-600" /> แดชบอร์ด {activeRole}</h2><p className="text-sm font-medium text-slate-500 mt-1 flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400" /> {new Date(selectedDate).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p></div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button onClick={() => setFilterShift('all')} className={`px-4 py-2 text-xs font-bold rounded-lg ${filterShift === 'all' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500'}`}>ทั้งหมด</button>
+                {SHIFTS.map(s => <button key={s.id} onClick={() => setFilterShift(s.id)} className={`px-4 py-2 text-xs font-bold rounded-lg ${filterShift === s.id ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500'}`}>{s.label.split(' ')[0]}</button>)}
               </div>
             </div>
           </div>
 
-          {/* กล่องกรอกข้อเสนอแนะตามระดับบทบาท (ผู้ตรวจ/ผอ.) */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 no-print">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-3">
-              <Edit3 className="w-5 h-5 text-indigo-600" /> 
-              บันทึกข้อเสนอแนะและข้อสั่งการประจำวันที่เลือก (สิทธิ์: {activeRole})
-            </h3>
-            
-            <form onSubmit={handleSaveComment} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-600 mb-1">
-                    {(activeRole === ROLES.INSPECTOR || activeRole === ROLES.HEAD) ? "ข้อเสนอแนะของผู้ตรวจเวร" : "ข้อสั่งการ/ข้อเสนอแนะของผู้บริหาร"}
-                  </label>
-                  <textarea 
-                    rows={2}
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="ระบุความคิดเห็น ผลการตรวจตรา หรือข้อสั่งการเร่งด่วน..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-600 mb-1">ชื่อผู้ลงลายมือชื่อ</label>
-                  <input 
-                    type="text"
-                    value={commenterName}
-                    onChange={(e) => setCommenterName(e.target.value)}
-                    placeholder="ระบุชื่อ-สกุล และตำแหน่ง"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mb-2"
-                  />
-                  <button 
-                    type="submit"
-                    disabled={isSavingComment}
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm"
-                  >
-                    <Save className="w-4 h-4" />
-                    {isSavingComment ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
-                  </button>
-                </div>
-              </div>
-            </form>
+          {/* Progress Overview */}
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 no-print">
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-sm font-bold text-slate-700">ภาพรวมการส่งรายงานประจำวัน</span>
+              <span className="text-lg font-black text-indigo-600">{reportedTotal} / {expectedTotal}</span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-3 mb-1 overflow-hidden">
+              <div className="bg-indigo-500 h-3 rounded-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+            </div>
+            <div className="flex justify-between text-xs font-bold text-slate-400 uppercase mt-2">
+              <span className="text-rose-500">ขาดส่ง {expectedTotal - reportedTotal}</span>
+              <span className="text-emerald-500">{progressPercent}%</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4"><AlertTriangle className="w-5 h-5 text-amber-500 animate-pulse" /> จุดที่ขาดเวร/ยังไม่ส่ง</h3>
-                <div className="space-y-4">
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-5 pb-4 border-b border-slate-100"><div className="bg-rose-100 p-1.5 rounded-lg"><AlertTriangle className="w-4 h-4 text-rose-600" /></div> จุดที่ขาดส่ง</h3>
+                <div className="space-y-5">
                   {SHIFTS.filter(s => filterShift === 'all' || filterShift === s.id).map(shift => {
                     const missing = getMissingPoints(shift.id);
                     return (
-                      <div key={shift.id} className="border-b last:border-0 pb-3 last:pb-0">
-                        <h4 className="text-sm font-bold text-indigo-700 flex items-center gap-1 mb-2"><Clock className="w-4 h-4" /> {shift.label}</h4>
-                        {missing.length === 0 ? <p className="text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">✔ ลงตรวจเวรครบทุกจุด</p> : (
-                          <ul className="space-y-1.5">
-                            {missing.map(p => <li key={p.id} className="text-xs text-gray-600 flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-rose-400 rounded-full"></span><span>{p.name}</span></li>)}
-                          </ul>
+                      <div key={shift.id}>
+                        <h4 className="text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-2.5"><FAIcon icon={shift.icon} className={shift.color} /> {shift.label}</h4>
+                        {missing.length === 0 ? <div className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">✨ ส่งครบทุกจุดเรียบร้อย</div> : (
+                          <div className="space-y-1.5">{missing.map(p => <div key={p.id} className="text-sm font-medium text-slate-600 bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-2.5 border border-slate-100"><div className="w-1.5 h-1.5 bg-rose-400 rounded-full"></div> {p.name}</div>)}</div>
                         )}
                       </div>
                     );
@@ -1093,105 +690,109 @@
                 </div>
               </div>
             </div>
-
             <div className="lg:col-span-2 space-y-4">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-600" /> บันทึกการส่งรายงาน ({filteredReports.length} รายการ)</h3>
-              {filteredReports.length === 0 ? <div className="bg-white rounded-xl p-8 text-center text-gray-400">ไม่มีผู้บันทึกเวรในหมวดหมู่นี้</div> : (
-                <div className="space-y-4">
-                  {filteredReports.map(report => (
-                    <ReportCard 
-                      key={report.id} 
-                      report={report} 
-                      dutyPoints={dutyPoints} 
-                      onViewImage={onViewImage}
-                    />
-                  ))}
-                </div>
+              <div className="flex justify-between items-center px-1">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2"><div className="bg-emerald-100 p-1.5 rounded-lg"><CheckCircle className="w-4 h-4 text-emerald-600" /></div> รายการที่ส่งแล้ว ({filteredReports.length})</h3>
+                <button onClick={() => exportToCSV(filteredReports, dutyPoints)} className="text-xs font-bold bg-slate-800 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-slate-700"><FileCsv className="w-3.5 h-3.5" /> โหลด Excel</button>
+              </div>
+              {filteredReports.length === 0 ? <div className="bg-white rounded-3xl p-10 text-center text-slate-400 border border-slate-100 border-dashed">ยังไม่มีข้อมูลรายงานในช่วงเวลานี้</div> : (
+                <div className="space-y-4">{filteredReports.map(report => <ReportCard key={report.id} report={report} dutyPoints={dutyPoints} onViewImage={onViewImage} />)}</div>
               )}
             </div>
           </div>
 
-          <div className="mt-8">
-            <h3 className="font-bold text-gray-800 text-lg mb-3 flex items-center gap-2 no-print"><FileText className="w-5 h-5 text-indigo-600" /> พรีวิวกระดาษรายงานเวรทางการ</h3>
-            <OfficialReportFormSheet selectedDate={selectedDate} dutyPoints={dutyPoints} reports={reports} dailyComments={dailyComments} />
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 no-print">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4"><div className="bg-indigo-100 p-1.5 rounded-lg"><Edit3 className="w-4 h-4 text-indigo-600" /></div> บันทึกข้อสั่งการ ({activeRole})</h3>
+            <form onSubmit={handleSaveComment} className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="md:col-span-2"><textarea rows={2} value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="พิมพ์ข้อความที่ต้องการให้ปรากฏในสมุดรายงาน..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none resize-none" /></div>
+              <div className="space-y-3"><input type="text" value={commenterName} onChange={(e) => setCommenterName(e.target.value)} placeholder="ชื่อผู้ลงนาม" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none" /><button type="submit" disabled={isSavingComment} className="w-full py-3 bg-indigo-600 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2"><Save className="w-4 h-4" /> {isSavingComment ? "บันทึก..." : "บันทึกข้อมูล"}</button></div>
+            </form>
           </div>
+
+          <div className="mt-8 pt-8 border-t border-slate-200"><OfficialReportFormSheet selectedDate={selectedDate} dutyPoints={dutyPoints} reports={reports} dailyComments={dailyComments} /></div>
         </div>
       );
     }
 
-    // ============================================================================
-    // ADMIN VIEW PANEL
-    // ============================================================================
-    function AdminView({ dutyPoints, reports, dailyComments, triggerToast, triggerConfirm }) {
-      const [activeTab, setActiveTab] = useState('points'); 
+    // ==========================================
+    // ADMIN VIEW
+    // ==========================================
+    function AdminView({ dutyPoints, reports, dailyComments, teachers, triggerToast, triggerConfirm }) {
+      const [activeTab, setActiveTab] = useState('points'); // 'points', 'teachers', 'reports'
       const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-      const [isAddingPoint, setIsAddingPoint] = useState(false);
+      
       const [newPointName, setNewPointName] = useState('');
       const [newPointLocation, setNewPointLocation] = useState('');
+      const [editPointId, setEditPointId] = useState(null);
 
-      const handleAddPoint = async (e) => {
-        e.preventDefault();
-        if (!newPointName) return;
+      const [newTeacherName, setNewTeacherName] = useState('');
+
+      // --- Duty Points Methods ---
+      const handleSavePoint = async (e) => {
+        e.preventDefault(); if (!newPointName) return;
         try {
-          await addDoc(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints'), { name: newPointName, location: newPointLocation, createdAt: serverTimestamp() });
-          setIsAddingPoint(false); setNewPointName(''); setNewPointLocation('');
-          triggerToast("เพิ่มจุดตรวจเวรสำเร็จ", "success");
+          if (editPointId) {
+            await updateDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints', editPointId), { name: newPointName, location: newPointLocation });
+            triggerToast("แก้ไขจุดสำเร็จ", "success");
+          } else {
+            await addDoc(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints'), { name: newPointName, location: newPointLocation, createdAt: serverTimestamp() });
+            triggerToast("เพิ่มจุดสำเร็จ", "success");
+          }
+          setNewPointName(''); setNewPointLocation(''); setEditPointId(null);
         } catch (err) { triggerToast("เกิดข้อผิดพลาด", "error"); }
       };
+      const handleDeletePoint = (id) => { triggerConfirm('แน่ใจหรือไม่ที่จะลบจุดนี้?', async () => { try { await deleteDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints', id)); triggerToast("ลบสำเร็จ", "success"); } catch (err) {} }); };
+      const startEditPoint = (p) => { setEditPointId(p.id); setNewPointName(p.name); setNewPointLocation(p.location || ''); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+      const cancelEditPoint = () => { setEditPointId(null); setNewPointName(''); setNewPointLocation(''); };
 
-      const handleDeletePoint = (id) => {
-        triggerConfirm('ต้องการที่จะลบจุดตรวจเวรนี้ใช่หรือไม่?', async () => {
-          try {
-            await deleteDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints', id));
-            triggerToast("ลบจุดตรวจเรียบร้อย", "success");
-          } catch (err) {}
-        });
+      // --- Teachers Methods ---
+      const handleAddTeacher = async (e) => {
+        e.preventDefault(); if (!newTeacherName) return;
+        try {
+          await addDoc(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'teachers'), { name: newTeacherName });
+          setNewTeacherName(''); triggerToast("เพิ่มรายชื่อครูสำเร็จ", "success");
+        } catch (err) {}
       };
+      const handleDeleteTeacher = (id) => { triggerConfirm('ลบรายชื่อครูนี้ออกจากระบบ?', async () => { try { await deleteDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'teachers', id)); triggerToast("ลบสำเร็จ", "success"); } catch (err) {} }); };
 
-      const getQrUrl = (pointId) => {
-        const currentDomain = window.location.origin + window.location.pathname;
-        return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${currentDomain}?pointId=${pointId}`)}&margin=15`;
-      };
+      const getQrUrl = (pointId) => `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}?pointId=${pointId}`)}&margin=15`;
 
       return (
-        <div className="space-y-6">
-          <div className="flex gap-4 border-b border-gray-200 no-print">
-            <button onClick={() => setActiveTab('points')} className={`pb-2 px-1 font-bold text-sm transition-colors flex items-center gap-2 ${activeTab === 'points' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500'}`}><Settings className="w-4 h-4" /> จัดการจุดตรวจ & QR</button>
-            <button onClick={() => setActiveTab('reports')} className={`pb-2 px-1 font-bold text-sm transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500'}`}><FileText className="w-4 h-4" /> รายงานสรุปแบบตารางย้อนหลัง</button>
+        <div className="space-y-6 animate-scaleIn">
+          <div className="bg-slate-200/70 p-1.5 rounded-2xl flex gap-1 shadow-inner overflow-x-auto no-print">
+            <button onClick={() => setActiveTab('points')} className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'points' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}><MapPin className="w-4 h-4" /> จุดตรวจ</button>
+            <button onClick={() => setActiveTab('teachers')} className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'teachers' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}><Users className="w-4 h-4" /> รายชื่อครู</button>
+            <button onClick={() => setActiveTab('reports')} className={`flex-1 py-3 px-4 min-w-[120px] text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'reports' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}><FileText className="w-4 h-4" /> รายงานย้อนหลัง</button>
           </div>
 
+          {/* TAB: Points */}
           {activeTab === 'points' && (
-            <div className="space-y-6 no-print animate-scaleIn">
-              <div className="flex justify-between items-center gap-3">
-                <div><h2 className="text-xl font-bold text-gray-800">ระบบจัดการตำแหน่งจุดตรวจ</h2><p className="text-sm text-gray-500">สร้าง QR Code เพื่อให้ผู้รายงานสแกนตรงจากพื้นที่ตรวจได้ทันที</p></div>
-                <button onClick={() => setIsAddingPoint(!isAddingPoint)} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-semibold hover:bg-indigo-700">{isAddingPoint ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{isAddingPoint ? 'ปิดแบบฟอร์ม' : 'เพิ่มจุดใหม่'}</button>
+            <div className="space-y-6 no-print">
+              <div className={`bg-white p-6 rounded-3xl shadow-sm border-2 ${editPointId ? 'border-amber-400 bg-amber-50/30' : 'border-indigo-100'}`}>
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">{editPointId ? <Edit3 className="w-5 h-5 text-amber-500"/> : <Plus className="w-5 h-5 text-indigo-500"/>} {editPointId ? 'แก้ไขข้อมูลจุดตรวจเวร' : 'สร้างจุดตรวจเวรใหม่'}</h3>
+                <form onSubmit={handleSavePoint} className="flex flex-col md:flex-row gap-4 items-end">
+                  <div className="flex-1 w-full"><label className="block text-sm font-bold text-slate-700 mb-2">ชื่อจุดตรวจ *</label><input type="text" required value={newPointName} onChange={(e) => setNewPointName(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none" /></div>
+                  <div className="flex-1 w-full"><label className="block text-sm font-bold text-slate-700 mb-2">คำอธิบาย/จุดสังเกต</label><input type="text" value={newPointLocation} onChange={(e) => setNewPointLocation(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none" /></div>
+                  <div className="flex gap-2 w-full md:w-auto">
+                    {editPointId && <button type="button" onClick={cancelEditPoint} className="px-6 py-3.5 bg-slate-200 text-slate-700 rounded-xl text-sm font-bold shadow-sm">ยกเลิก</button>}
+                    <button type="submit" className={`flex-1 md:flex-none px-8 py-3.5 text-white rounded-xl text-sm font-bold shadow-md ${editPointId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{editPointId ? 'บันทึกการแก้ไข' : 'บันทึกจุดใหม่'}</button>
+                  </div>
+                </form>
               </div>
 
-              {isAddingPoint && (
-                <div className="bg-white p-5 rounded-xl shadow-sm border border-indigo-100 animate-scaleIn">
-                  <form onSubmit={handleAddPoint} className="flex flex-col sm:flex-row gap-4 items-end">
-                    <div className="flex-1 w-full"><label className="block text-sm font-bold text-gray-700 mb-1">ชื่อจุดตรวจเวร *</label><input type="text" required value={newPointName} onChange={(e) => setNewPointName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm" /></div>
-                    <div className="flex-1 w-full"><label className="block text-sm font-bold text-gray-700 mb-1">คำอธิบาย</label><input type="text" value={newPointLocation} onChange={(e) => setNewPointLocation(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm" /></div>
-                    <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-md text-sm font-bold hover:bg-green-700 h-[38px]">บันทึกข้อมูล</button>
-                  </form>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {dutyPoints.map(point => (
-                  <div key={point.id} className="bg-white rounded-xl shadow-md border border-gray-100 p-5 flex flex-col justify-between hover:shadow-lg transition-shadow">
-                    <div className="flex justify-between items-start">
-                      <div><h3 className="font-bold text-gray-800 text-lg flex items-center gap-1"><MapPin className="w-5 h-5 text-indigo-500" />{point.name}</h3><p className="text-sm text-gray-500 mt-1">{point.location || '-'}</p></div>
-                      <button onClick={() => handleDeletePoint(point.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded bg-gray-50"><Trash2 className="w-4.5 h-4.5" /></button>
+                  <div key={point.id} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 flex flex-col justify-between group">
+                    <div className="flex justify-between items-start mb-6">
+                      <div><h3 className="font-bold text-slate-800 text-lg flex items-center gap-1.5"><MapPin className="w-5 h-5 text-indigo-500" />{point.name}</h3><p className="text-sm font-medium text-slate-500 mt-1.5 bg-slate-50 inline-block px-2.5 py-1 rounded-md">{point.location || 'ไม่มีคำอธิบาย'}</p></div>
+                      <div className="flex gap-1">
+                        <button onClick={() => startEditPoint(point)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-amber-50 hover:text-amber-600 rounded-full transition-colors"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeletePoint(point.id)} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-full transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
-                    <div className="mt-6 pt-4 border-t border-gray-100 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-20 h-20 bg-white border border-gray-200 p-1 rounded-md shadow-sm flex-shrink-0"><img src={getQrUrl(point.id)} alt="QR Code" className="w-full h-full object-cover" /></div>
-                        <div className="text-xs text-gray-400 space-y-1"><span className="font-bold text-gray-600 block">บาร์โค้ดลงทะเบียนทันที</span><span>เมื่อสแกนด้วยกล้องมือถือ จะเด้งเข้าสู่ฟอร์มบันทึกเวลาโดยตรง</span></div>
-                      </div>
-                      <div className="flex justify-between items-center gap-2 pt-2">
-                        <a href={getQrUrl(point.id)} download={`QR_${point.name}.png`} target="_blank" rel="noreferrer" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded font-semibold flex items-center gap-1 w-full justify-center"><Download className="w-3.5 h-3.5" /> ดาวน์โหลดภาพสำหรับปรินต์</a>
-                      </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center gap-3">
+                      <div className="w-32 h-32 bg-white p-2 rounded-xl shadow-sm border border-slate-200"><img src={getQrUrl(point.id)} alt="QR Code" className="w-full h-full" /></div>
+                      <a href={getQrUrl(point.id)} download={`QR_${point.name}.png`} target="_blank" rel="noreferrer" className="w-full text-center text-sm font-bold text-indigo-600 bg-white border border-indigo-100 hover:bg-indigo-50 py-2.5 rounded-xl shadow-sm"><Download className="w-3.5 h-3.5 inline mr-1" /> เซฟ QR Code</a>
                     </div>
                   </div>
                 ))}
@@ -1199,11 +800,41 @@
             </div>
           )}
 
+          {/* TAB: Teachers Database */}
+          {activeTab === 'teachers' && (
+            <div className="space-y-6 no-print">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Users className="w-5 h-5 text-indigo-500"/> เพิ่มรายชื่อครู/ผู้ปฏิบัติเวร</h3>
+                <form onSubmit={handleAddTeacher} className="flex gap-3">
+                  <input type="text" required value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} placeholder="พิมพ์ชื่อ-นามสกุล..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" />
+                  <button type="submit" className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md"><Plus className="w-5 h-5 inline" /> เพิ่ม</button>
+                </form>
+              </div>
+
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50"><span className="font-bold text-slate-700">รายชื่อในระบบทั้งหมด ({teachers.length} คน)</span></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 p-4 gap-3">
+                  {teachers.map(t => (
+                    <div key={t.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:bg-slate-50">
+                      <span className="font-medium text-slate-700 flex items-center gap-2"><User className="w-4 h-4 text-slate-400"/> {t.name}</span>
+                      <button onClick={() => handleDeleteTeacher(t.id)} className="text-slate-400 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                  {teachers.length === 0 && <div className="col-span-full p-8 text-center text-slate-400">ยังไม่มีรายชื่อในระบบ</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Reports */}
           {activeTab === 'reports' && (
-            <div className="space-y-6 animate-scaleIn">
-              <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center gap-4 no-print">
-                <div><h2 className="text-lg font-bold text-gray-800">ค้นหาตารางบันทึกรายงานเวรทางการ</h2></div>
-                <div className="flex items-center gap-2"><label className="text-sm text-gray-600 font-bold">เลือกวันที่ย้อนหลัง:</label><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="border-gray-300 rounded-md shadow-sm text-sm px-2 py-1" /></div>
+            <div className="space-y-6">
+              <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-4 no-print">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><FileText className="text-indigo-600 w-5 h-5"/> ค้นหารายงานทางการ</h2>
+                <div className="flex gap-3">
+                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none w-full sm:w-auto" />
+                  <button onClick={() => exportToCSV(reports.filter(r => new Date(r.timestamp).toISOString().split('T')[0] === selectedDate), dutyPoints)} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm flex items-center gap-2 whitespace-nowrap"><FileCsv className="w-4 h-4" /> โหลด Excel</button>
+                </div>
               </div>
               <OfficialReportFormSheet selectedDate={selectedDate} dutyPoints={dutyPoints} reports={reports} dailyComments={dailyComments} />
             </div>
@@ -1212,180 +843,93 @@
       );
     }
 
-    // ============================================================================
-    // OFFICIAL REPORT FORM SHEET (MATRIX PRINT WITH VERIFIED ROLE REMARKS)
-    // ============================================================================
-    function OfficialReportFormSheet({ selectedDate, dutyPoints, reports, dailyComments }) {
+    function OfficialReportFormSheet({ selectedDate, dutyPoints, reports, dailyComments = [] }) {
       const formatThaiDate = (dateString) => {
-        if (!dateString) return '';
-        const d = new Date(dateString);
+        if (!dateString) return ''; const d = new Date(dateString);
         const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
         return `วัน${d.toLocaleDateString('th-TH', { weekday: 'long' })} ที่ ${d.getDate()} เดือน ${months[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
       };
 
       const getCellReport = (pointId, shiftId) => reports.find(r => new Date(r.timestamp).toISOString().split('T')[0] === selectedDate && r.pointId === pointId && r.shift === shiftId);
-      const getShiftDisplayName = (shiftId) => ({ morning: 'ช่วงเช้า', lunch: 'ช่วงพักกลางวัน', evening: 'ช่วงเย็น' }[shiftId] || 'เวร');
+      const dayComment = dailyComments.find(c => c.id === selectedDate) || {};
 
       const renderReportDetail = (report) => {
-        if (!report) return <div className="mt-2 text-gray-300"><div className="border-b border-dotted border-gray-400 w-full mb-4"></div><div className="border-b border-dotted border-gray-400 w-full mb-2"></div></div>;
+        if (!report) return <div className="mt-2.5 opacity-40"><div className="border-b border-dotted border-black w-full mb-5"></div><div className="border-b border-dotted border-black w-full mb-3"></div></div>;
         return (
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center gap-2">
-              {report.status === 'normal' ? <span className="text-green-700 font-bold text-sm">✔ เหตุการณ์ปกติ</span> : <span className="text-red-700 font-bold text-sm">⚠ มีเหตุผิดปกติ</span>}
-              <span className="text-gray-500 text-xs">(เวลา {new Date(report.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)</span>
+          <div className="mt-2">
+            <div className="flex items-center gap-2 mb-1.5">
+              {report.status === 'normal' ? <span className="font-bold text-sm">✔ เหตุการณ์ปกติ</span> : <span className="font-bold text-sm">⚠ มีเหตุผิดปกติ</span>}
+              <span className="text-xs">({new Date(report.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)</span>
             </div>
-            {report.detail && <div className="text-gray-800 text-sm whitespace-pre-wrap">{report.detail}</div>}
+            {report.detail && <div className="text-sm font-medium">{report.detail}</div>}
           </div>
         );
       };
 
-      // หาข้อมูลข้อเสนอแนะของวันนี้
-      const dayComment = dailyComments.find(c => c.id === selectedDate) || {};
-
       return (
         <div className="space-y-4">
           <div className="flex justify-end no-print">
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow"><Printer className="w-5 h-5" /> พิมพ์แบบรายงานเวรทางการ (A4)</button>
+            <button onClick={() => window.print()} className="px-6 py-3 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"><Printer className="w-5 h-5" /> สั่งพิมพ์รายงาน (A4)</button>
           </div>
           
-          <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-md print-container print:p-0 print:border-none print:shadow-none print-full-width">
-            <div className="text-center space-y-2 pb-6 mb-6 border-b">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">สมุดบันทึกรายงานการปฏิบัติเวรประจำจุด</h1>
-              <p className="text-md text-gray-800 font-bold mt-2">ประจำ{formatThaiDate(selectedDate)}</p>
+          <div className="bg-white p-8 sm:p-12 rounded-3xl border border-slate-200 shadow-md print:p-0 print:border-none print:shadow-none print-full-width text-black">
+            <div className="text-center pb-6 mb-6">
+              <h1 className="text-xl sm:text-2xl font-bold mb-1">สมุดบันทึกรายงานการปฏิบัติเวรประจำจุด</h1>
+              <p className="text-md font-bold">ประจำ{formatThaiDate(selectedDate)}</p>
             </div>
             
-            {/* ตารางข้อมูลการตรวจเวรตามแบบโรงเรียนไทย */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse border border-black">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[20%]">เวรประจำจุด</th>
-                    <th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[55%]">บันทึกเวร</th>
-                    <th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[25%]">ผู้รายงาน</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {dutyPoints.map((point) => {
-                    const mReport = getCellReport(point.id, 'morning');
-                    const lReport = getCellReport(point.id, 'lunch');
-                    const eReport = getCellReport(point.id, 'evening');
-                    const uniqueReporters = [...new Set([mReport, lReport, eReport].filter(Boolean).map(r => r.userName))];
+            <table className="w-full border-collapse border-2 border-black">
+              <thead>
+                <tr className="bg-gray-100 print:bg-gray-100">
+                  <th className="p-3 border-2 border-black text-center font-bold w-[20%]">เวรประจำจุด</th>
+                  <th className="p-3 border-2 border-black text-center font-bold w-[55%]">บันทึกเวร</th>
+                  <th className="p-3 border-2 border-black text-center font-bold w-[25%]">ผู้รายงาน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dutyPoints.map((point) => {
+                  const mRep = getCellReport(point.id, 'morning'); const lRep = getCellReport(point.id, 'lunch'); const eRep = getCellReport(point.id, 'evening');
+                  const uniqRep = [...new Set([mRep, lRep, eRep].filter(Boolean).map(r => r.userName))];
+                  return (
+                    <React.Fragment key={point.id}>
+                      <tr>
+                        <td rowSpan={3} className="p-4 border border-black align-top text-center"><div className="font-bold text-lg">{point.name}</div></td>
+                        <td className="p-3 border border-black align-top h-[90px]"><div className="font-bold underline decoration-1 underline-offset-2 mb-1">ช่วงเช้า</div>{renderReportDetail(mRep)}</td>
+                        <td rowSpan={3} className="p-4 border border-black align-top text-center relative">
+                          {uniqRep.length > 0 ? <div className="space-y-6 mt-4">{uniqRep.map((n, i) => <div key={i} className="font-bold whitespace-nowrap">{n}</div>)}</div> : <div className="absolute inset-0 flex items-center justify-center text-xs opacity-50">(ลงนามผู้ปฏิบัติเวร)</div>}
+                        </td>
+                      </tr>
+                      <tr><td className="p-3 border border-black align-top h-[90px]"><div className="font-bold underline decoration-1 underline-offset-2 mb-1">ช่วงพักกลางวัน</div>{renderReportDetail(lRep)}</td></tr>
+                      <tr><td className="p-3 border border-black align-top h-[90px]"><div className="font-bold underline decoration-1 underline-offset-2 mb-1">ช่วงเย็น</div>{renderReportDetail(eRep)}</td></tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
 
-                    return (
-                      <React.Fragment key={point.id}>
-                        <tr>
-                          <td rowSpan={3} className="px-4 py-4 border border-black align-top text-center">
-                            <div className="font-bold text-gray-900 text-lg">{point.name}</div>
-                          </td>
-                          <td className="px-4 py-3 border border-black align-top min-h-[80px]">
-                            <div className="font-bold text-gray-900">{getShiftDisplayName('morning')}</div>
-                            {renderReportDetail(mReport)}
-                          </td>
-                          <td rowSpan={3} className="px-4 py-4 border border-black align-top text-center">
-                            {uniqueReporters.length > 0 ? (
-                              <div className="space-y-4 mt-2">
-                                {uniqueReporters.map((name, idx) => (
-                                  <div key={idx} className="text-sm font-semibold text-gray-800">{name}</div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col h-full justify-center text-gray-300 italic text-sm">(ลงนามผู้ปฏิบัติเวร)</div>
-                            )}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-4 py-3 border border-black align-top min-h-[80px]">
-                            <div className="font-bold text-gray-900">{getShiftDisplayName('lunch')}</div>
-                            {renderReportDetail(lReport)}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-4 py-3 border border-black align-top min-h-[80px]">
-                            <div className="font-bold text-gray-900">{getShiftDisplayName('evening')}</div>
-                            {renderReportDetail(eReport)}
-                          </td>
-                        </tr>
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* ส่วนเขียนข้อเสนอแนะประจำสายตรวจ */}
-            <div className="mt-8 space-y-6 border border-black p-4 rounded-lg">
-              {/* ข้อเสนอแนะของผู้ตรวจเวร */}
+            <div className="mt-8 border-2 border-black p-5 rounded-lg space-y-5">
               <div>
-                <h4 className="font-bold text-md text-gray-900 flex items-center gap-1">
-                  <span>ข้อเสนอแนะของผู้ตรวจเวร:</span>
-                </h4>
-                <div className="text-sm text-gray-800 min-h-[40px] pl-4 pt-1 whitespace-pre-wrap leading-relaxed">
-                  {dayComment.inspectorComment ? (
-                    dayComment.inspectorComment
-                  ) : (
-                    <span className="text-gray-300 italic block">...................................................................................................................................................................................</span>
-                  )}
-                </div>
-                {dayComment.inspectorName && (
-                  <p className="text-right text-xs font-semibold text-gray-700 mt-2">ลงชื่อ: {dayComment.inspectorName}</p>
-                )}
+                <h4 className="font-bold mb-1">ข้อเสนอแนะของผู้ตรวจเวร:</h4>
+                <div className="min-h-[40px] pl-4 text-sm">{dayComment.inspectorComment || <div className="opacity-30 pt-2"><div className="border-b border-dotted border-black w-full mb-6"></div><div className="border-b border-dotted border-black w-full"></div></div>}</div>
+                {dayComment.inspectorName && <p className="text-right text-sm font-bold mt-2">ลงชื่อ: {dayComment.inspectorName}</p>}
               </div>
-
-              {/* ข้อเสนอแนะ/ข้อสั่งการของผู้บริหาร */}
-              <div className="border-t border-gray-300 pt-4">
-                <h4 className="font-bold text-md text-gray-900 flex items-center gap-1">
-                  <span>ข้อสั่งการ/ข้อเสนอแนะของผู้บริหาร:</span>
-                </h4>
-                <div className="text-sm text-gray-800 min-h-[40px] pl-4 pt-1 whitespace-pre-wrap leading-relaxed">
-                  {dayComment.executiveComment ? (
-                    dayComment.executiveComment
-                  ) : (
-                    <span className="text-gray-300 italic block">...................................................................................................................................................................................</span>
-                  )}
-                </div>
-                {dayComment.executiveName && (
-                  <p className="text-right text-xs font-semibold text-gray-700 mt-2">ลงชื่อ: {dayComment.executiveName}</p>
-                )}
+              <div className="border-t-2 border-black border-dotted pt-4">
+                <h4 className="font-bold mb-1">ข้อสั่งการของผู้บริหาร:</h4>
+                <div className="min-h-[40px] pl-4 text-sm">{dayComment.executiveComment || <div className="opacity-30 pt-2"><div className="border-b border-dotted border-black w-full mb-6"></div><div className="border-b border-dotted border-black w-full"></div></div>}</div>
+                {dayComment.executiveName && <p className="text-right text-sm font-bold mt-2">ลงชื่อ: {dayComment.executiveName}</p>}
               </div>
             </div>
 
-            {/* ส่วนสำหรับลายเซ็นกำกับ 3 ฝ่าย */}
-            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 print:grid-cols-3">
-              <div className="text-center space-y-8 flex flex-col justify-between">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายผู้ยืนเวรตรวจ</h4>
-                <div className="space-y-2">
-                  <p className="text-sm">ลงชื่อ......................................................</p>
-                  <p className="text-xs text-gray-400">ข้าราชการครูและบุคลากรประจำวัน</p>
-                </div>
-              </div>
-              
-              <div className="text-center space-y-8 flex flex-col justify-between border-t md:border-t-0 md:border-x border-gray-200 py-4 md:py-0">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายตรวจสอบและสรุป</h4>
-                <div className="space-y-2">
-                  <p className="text-sm">
-                    {dayComment.inspectorName ? `( ${dayComment.inspectorName} )` : "ลงชื่อ......................................................"}
-                  </p>
-                  <p className="text-xs text-gray-400">ผู้รับผิดชอบสายตรวจโรงเรียน</p>
-                </div>
-              </div>
-              
-              <div className="text-center space-y-8 flex flex-col justify-between">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายรับรองและสั่งการ</h4>
-                <div className="space-y-2">
-                  <p className="text-sm">
-                    {dayComment.executiveName ? `( ${dayComment.executiveName} )` : "ลงชื่อ......................................................"}
-                  </p>
-                  <p className="text-xs text-gray-400">ผู้อำนวยการโรงเรียนหรือผู้รักษาการแทน</p>
-                </div>
-              </div>
+            <div className="mt-16 grid grid-cols-3 gap-4 text-center pb-10">
+              <div className="flex flex-col items-center"><div className="font-bold text-sm mb-12">ฝ่ายผู้ยืนเวรตรวจ</div><div>ลงชื่อ......................................................</div><div className="text-xs mt-1">ข้าราชการครูและบุคลากรประจำวัน</div></div>
+              <div className="flex flex-col items-center"><div className="font-bold text-sm mb-12">ฝ่ายตรวจสอบและสรุป</div><div>{dayComment.inspectorName ? `( ${dayComment.inspectorName} )` : "ลงชื่อ......................................................"}</div><div className="text-xs mt-1">ผู้รับผิดชอบสายตรวจโรงเรียน</div></div>
+              <div className="flex flex-col items-center"><div className="font-bold text-sm mb-12">ฝ่ายรับรองและสั่งการ</div><div>{dayComment.executiveName ? `( ${dayComment.executiveName} )` : "ลงชื่อ......................................................"}</div><div className="text-xs mt-1">ผู้อำนวยการโรงเรียนหรือผู้รักษาการแทน</div></div>
             </div>
-
           </div>
         </div>
       );
     }
 
-    // --- 7. Render Application DOM ---
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
