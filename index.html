@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบรายงานเวรประจำวันโรงเรียน</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    /* CSS Animations and Print Styles */
+    @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .animate-scaleIn { animation: scaleIn 0.2s ease-out forwards; }
+    
+    @media print {
+      body { background-color: white !important; color: black !important; font-size: 12px; }
+      .no-print { display: none !important; }
+      .print-full-width { width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; border: none !important; }
+      table { border-collapse: collapse !important; width: 100% !important; }
+      th, td { border: 1px solid #000 !important; padding: 6px 8px !important; }
+    }
+  </style>
+
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone (For processing JSX in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+  
+  <!-- Root element for React -->
+  <div id="root"></div>
+
+  <!-- React Application Code -->
+  <script type="text/babel" data-type="module">
+    // --- 1. Firebase ES Module Imports ---
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+    import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+    import { 
+      getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, serverTimestamp 
+    } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+    const { useState, useEffect, useRef } = React;
+
+    // --- 2. Mock Icons (Replacing Lucide with FontAwesome) ---
+    const FAIcon = ({ icon, className }) => <i className={`${icon} ${className || ''}`} style={{ fontSize: '1.1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></i>;
+    
+    const Camera = ({ className }) => <FAIcon icon="fas fa-camera" className={className} />;
+    const QrCode = ({ className }) => <FAIcon icon="fas fa-qrcode" className={className} />;
+    const MapPin = ({ className }) => <FAIcon icon="fas fa-map-marker-alt" className={className} />;
+    const Clock = ({ className }) => <FAIcon icon="far fa-clock" className={className} />;
+    const CheckCircle = ({ className }) => <FAIcon icon="fas fa-check-circle" className={className} />;
+    const AlertTriangle = ({ className }) => <FAIcon icon="fas fa-exclamation-triangle" className={className} />;
+    const Settings = ({ className }) => <FAIcon icon="fas fa-cog" className={className} />;
+    const FileText = ({ className }) => <FAIcon icon="fas fa-file-alt" className={className} />;
+    const User = ({ className }) => <FAIcon icon="fas fa-user" className={className} />;
+    const Shield = ({ className }) => <FAIcon icon="fas fa-shield-alt" className={className} />;
+    const ImageIcon = ({ className }) => <FAIcon icon="fas fa-image" className={className} />;
+    const Plus = ({ className }) => <FAIcon icon="fas fa-plus" className={className} />;
+    const Trash2 = ({ className }) => <FAIcon icon="fas fa-trash-alt" className={className} />;
+    const Edit3 = ({ className }) => <FAIcon icon="fas fa-edit" className={className} />;
+    const Save = ({ className }) => <FAIcon icon="fas fa-save" className={className} />;
+    const X = ({ className }) => <FAIcon icon="fas fa-times" className={className} />;
+    const Calendar = ({ className }) => <FAIcon icon="far fa-calendar-alt" className={className} />;
+    const Printer = ({ className }) => <FAIcon icon="fas fa-print" className={className} />;
+    const Download = ({ className }) => <FAIcon icon="fas fa-download" className={className} />;
+    const Lock = ({ className }) => <FAIcon icon="fas fa-lock" className={className} />;
+    const Key = ({ className }) => <FAIcon icon="fas fa-key" className={className} />;
+    const LogOut = ({ className }) => <FAIcon icon="fas fa-sign-out-alt" className={className} />;
+
+    // --- 3. Firebase Configuration (Production - Teppitak School) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNwMXX7sewiMGAwI3StFssKbApbEsrGZ0",
+      authDomain: "teppitakschool-8ec4f.firebaseapp.com",
+      projectId: "teppitakschool-8ec4f",
+      storageBucket: "teppitakschool-8ec4f.firebasestorage.app",
+      messagingSenderId: "62988582755",
+      appId: "1:62988582755:web:62345ca8c2973153715d56",
+      measurementId: "G-548SXKTJH0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    let analytics;
+    if (typeof window !== 'undefined') {
+      analytics = getAnalytics(app);
+    }
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const dutyAppId = "teppitakschool"; 
+
+    // --- 4. Constants & PIN Codes ---
+    const SHIFTS = [
+      { id: 'morning', label: 'เช้า (ก่อนเข้าเรียน)', time: '06.30 - 08.00 น.' },
+      { id: 'lunch', label: 'พักเช้า - กลางวัน', time: '11.30 - 12.30 น.' },
+      { id: 'evening', label: 'เย็นหลังเลิกเรียน', time: '15.30 - 17.00 น.' }
+    ];
+
+    const ROLES = {
+      REPORTER: 'ผู้รายงานเวร',
+      INSPECTOR: 'ผู้ตรวจเวร',
+      ADMIN: 'แอดมิน (ผู้ดูแลระบบ)'
+    };
+
+    const ADMIN_PIN = '9999';
+    const INSPECTOR_PIN = '1234';
+
+    const checkIsToday = (timestamp) => {
+      if (!timestamp) return false;
+      const date = new Date(timestamp);
+      const today = new Date();
+      return date.getDate() === today.getDate() &&
+             date.getMonth() === today.getMonth() &&
+             date.getFullYear() === today.getFullYear();
+    };
+
+    // --- 5. Main Components ---
+    function App() {
+      const [user, setUser] = useState(null);
+      const [activeRole, setActiveRole] = useState(ROLES.REPORTER);
+      const [dutyPoints, setDutyPoints] = useState([]);
+      const [reports, setReports] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [errorMsg, setErrorMsg] = useState('');
+      
+      const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+      const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
+      const [showLoginModal, setShowLoginModal] = useState(false);
+      const [pinInput, setPinInput] = useState('');
+
+      const [scannedPoint, setScannedPoint] = useState(null);
+      const [teacherName, setTeacherName] = useState('');
+
+      const triggerToast = (message, type = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => {
+          setToast(prev => ({ ...prev, show: false }));
+        }, 4000);
+      };
+
+      const triggerConfirm = (message, action) => {
+        setConfirmModal({
+          show: true,
+          message,
+          onConfirm: () => {
+            action();
+            setConfirmModal({ show: false, message: '', onConfirm: null });
+          }
+        });
+      };
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        if (pinInput === ADMIN_PIN) {
+          setActiveRole(ROLES.ADMIN);
+          setShowLoginModal(false);
+          setPinInput('');
+          triggerToast('เข้าสู่ระบบสิทธิ์ "แอดมิน" สำเร็จ', 'success');
+        } else if (pinInput === INSPECTOR_PIN) {
+          setActiveRole(ROLES.INSPECTOR);
+          setShowLoginModal(false);
+          setPinInput('');
+          triggerToast('เข้าสู่ระบบสิทธิ์ "ผู้ตรวจเวร" สำเร็จ', 'success');
+        } else {
+          triggerToast('รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่', 'error');
+          setPinInput('');
+        }
+      };
+
+      const handleLogout = () => {
+        setActiveRole(ROLES.REPORTER);
+        triggerToast('ออกจากระบบ กลับสู่หน้าสำหรับผู้รายงานเวร', 'success');
+      };
+
+      useEffect(() => {
+        const initAuth = async () => {
+          try {
+            await signInAnonymously(auth);
+          } catch (err) {
+            console.error("Auth Error:", err);
+            setErrorMsg("ไม่สามารถเชื่อมต่อระบบยืนยันตัวตนได้ กรุณาตรวจสอบการตั้งค่า Authentication ใน Firebase");
+          }
+        };
+        initAuth();
+
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setLoading(false);
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+
+        const pointsRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints');
+        const unsubscribePoints = onSnapshot(pointsRef, (snapshot) => {
+          const pointsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setDutyPoints(pointsData);
+        }, (err) => console.error("Error fetching points:", err));
+
+        const reportsRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports');
+        const unsubscribeReports = onSnapshot(reportsRef, (snapshot) => {
+          const reportsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          reportsData.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          setReports(reportsData);
+        }, (err) => console.error("Error fetching reports:", err));
+
+        return () => {
+          unsubscribePoints();
+          unsubscribeReports();
+        };
+      }, [user]);
+
+      useEffect(() => {
+        if (dutyPoints.length === 0) return;
+        const params = new URLSearchParams(window.location.search);
+        const pointIdParam = params.get('pointId');
+        
+        if (pointIdParam) {
+          const matchedPoint = dutyPoints.find(p => p.id === pointIdParam);
+          if (matchedPoint) {
+            setScannedPoint(matchedPoint);
+            setActiveRole(ROLES.REPORTER);
+            triggerToast(`เข้าสู่จุดลงเวลา: ${matchedPoint.name}`, 'success');
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
+      }, [dutyPoints]);
+
+      if (loading) {
+        return (
+          <div className="flex items-center justify-center h-screen bg-gray-50">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <div className="text-xl font-semibold text-gray-600">กำลังเชื่อมต่อฐานข้อมูล...</div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-100 font-sans text-gray-800 flex flex-col justify-between">
+          <header className="bg-indigo-700 shadow-md sticky top-0 z-40 no-print">
+            <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <Shield className="w-7 h-7 text-indigo-200" />
+                <h1 className="font-bold text-lg hidden sm:block">ระบบรายงานเวรประจำวัน</h1>
+                <h1 className="font-bold text-lg sm:hidden">ระบบเวร</h1>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {activeRole === ROLES.REPORTER ? (
+                  <button 
+                    onClick={() => setShowLoginModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-800 hover:bg-indigo-900 rounded-md text-sm font-medium transition-colors border border-indigo-600"
+                  >
+                    <Key className="w-4 h-4" /> <span className="hidden sm:inline">สำหรับเจ้าหน้าที่</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-semibold bg-indigo-600 px-3 py-1 rounded-full border border-indigo-500">
+                      สิทธิ์: {activeRole}
+                    </span>
+                    <button 
+                      onClick={handleLogout}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-md text-sm font-medium transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">ออกจากระบบ</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-grow print:p-0 print:max-w-full">
+            {errorMsg && (
+              <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-md no-print">
+                {errorMsg}
+              </div>
+            )}
+
+            {activeRole === ROLES.REPORTER && (
+              <ReporterView 
+                user={user} 
+                dutyPoints={dutyPoints} 
+                reports={reports} 
+                scannedPoint={scannedPoint}
+                setScannedPoint={setScannedPoint}
+                triggerToast={triggerToast}
+                teacherName={teacherName}
+                setTeacherName={setTeacherName}
+              />
+            )}
+            {activeRole === ROLES.INSPECTOR && (
+              <InspectorView dutyPoints={dutyPoints} reports={reports} triggerToast={triggerToast} />
+            )}
+            {activeRole === ROLES.ADMIN && (
+              <AdminView dutyPoints={dutyPoints} reports={reports} triggerToast={triggerToast} triggerConfirm={triggerConfirm} />
+            )}
+          </main>
+
+          {showLoginModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn">
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <Key className="w-5 h-5 text-indigo-600" /> เข้าสู่ระบบเจ้าหน้าที่
+                  </h3>
+                  <button onClick={() => {setShowLoginModal(false); setPinInput('');}} className="text-gray-400 hover:text-gray-600 p-1 bg-gray-100 rounded-full">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">รหัส PIN 4 หลัก</label>
+                    <input 
+                      type="password" 
+                      value={pinInput}
+                      onChange={(e) => setPinInput(e.target.value)}
+                      placeholder="****"
+                      maxLength={4}
+                      autoFocus
+                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-center text-xl tracking-[1em] font-bold"
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors mt-2"
+                  >
+                    ยืนยันการเข้าสู่ระบบ
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {toast.show && (
+            <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 p-4 rounded-lg shadow-xl text-white animate-bounce transition-all duration-300 bg-gray-900 border border-gray-800">
+              {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-green-400" /> : <AlertTriangle className="w-5 h-5 text-red-400" />}
+              <span className="text-sm font-medium">{toast.message}</span>
+              <button onClick={() => setToast(prev => ({ ...prev, show: false }))} className="text-gray-400 hover:text-white ml-2">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {confirmModal.show && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-scaleIn">
+                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" /> ยืนยันการดำเนินการ
+                </h3>
+                <p className="text-gray-600 text-sm mb-6">{confirmModal.message}</p>
+                <div className="flex gap-3 justify-end">
+                  <button 
+                    onClick={() => setConfirmModal({ show: false, message: '', onConfirm: null })}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button 
+                    onClick={confirmModal.onConfirm}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow"
+                  >
+                    ยืนยัน
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ReporterView({ user, dutyPoints, reports, scannedPoint, setScannedPoint, triggerToast, teacherName, setTeacherName }) {
+      const [activeTab, setActiveTab] = useState('scan'); 
+      const [selectedPoint, setSelectedPoint] = useState(null);
+
+      useEffect(() => {
+        if (scannedPoint) setSelectedPoint(scannedPoint);
+      }, [scannedPoint]);
+
+      const myReports = reports.filter(r => r.userId === user.uid);
+
+      useEffect(() => {
+        if (myReports.length > 0 && !teacherName) {
+          setTeacherName(myReports[0].userName);
+        }
+      }, [myReports, teacherName, setTeacherName]);
+
+      return (
+        <div className="space-y-6">
+          <div className="flex gap-4 border-b border-gray-200 no-print">
+            <button 
+              onClick={() => { setActiveTab('scan'); setSelectedPoint(null); setScannedPoint(null); }}
+              className={`pb-2 px-1 font-bold text-sm transition-colors ${activeTab === 'scan' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              ลงเวลาเข้าเวร (ถ่ายสด)
+            </button>
+            <button 
+              onClick={() => setActiveTab('history')}
+              className={`pb-2 px-1 font-bold text-sm transition-colors ${activeTab === 'history' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              ประวัติของฉัน ({myReports.length})
+            </button>
+          </div>
+
+          {activeTab === 'scan' && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              {!selectedPoint ? (
+                <div className="p-10 text-center space-y-6 min-h-[300px] flex flex-col justify-center">
+                  <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto">
+                    <QrCode className="w-12 h-12 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-800">โปรดสแกน QR Code ประจำจุด</h2>
+                    <p className="text-gray-500 mt-3 text-sm max-w-sm mx-auto bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                      <AlertTriangle className="w-4 h-4 inline text-yellow-600 mb-0.5 mr-1" />
+                      เพื่อป้องกันการลงเวลาผิดพลาด ระบบไม่อนุญาตให้เลือกจุดเอง กรุณาใช้กล้องมือถือสแกน QR Code ณ จุดตรวจเวรเพื่อดำเนินการต่อ
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <ReportForm 
+                  user={user} 
+                  point={selectedPoint} 
+                  onCancel={() => { setSelectedPoint(null); setScannedPoint(null); }}
+                  onSuccess={() => {
+                    setSelectedPoint(null);
+                    setScannedPoint(null);
+                    setActiveTab('history');
+                    triggerToast('ส่งรายงานความคืบหน้าเข้าเวรสำเร็จแล้ว', 'success');
+                  }}
+                  triggerToast={triggerToast}
+                  teacherName={teacherName}
+                  setTeacherName={setTeacherName}
+                />
+              )}
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-600" /> ประวัติของคุณ
+                </h2>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  * ข้ามวันแล้วจะถูกล็อกแก้ไข
+                </span>
+              </div>
+              
+              {myReports.length === 0 ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-gray-100 text-gray-500">
+                  ยังไม่มีประวัติการรายงานเวร
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {myReports.map(report => (
+                    <ReportCard 
+                      key={report.id} 
+                      report={report} 
+                      dutyPoints={dutyPoints} 
+                      isOwner={true} 
+                      triggerToast={triggerToast} 
+                      teacherName={teacherName}
+                      setTeacherName={setTeacherName}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ReportForm({ user, point, onCancel, onSuccess, existingReport = null, triggerToast, teacherName, setTeacherName }) {
+      const [shift, setShift] = useState(existingReport?.shift || SHIFTS[0].id);
+      const [status, setStatus] = useState(existingReport?.status || 'normal');
+      const [detail, setDetail] = useState(existingReport?.detail || '');
+      const [photoUrl, setPhotoUrl] = useState(existingReport?.photoUrl || null);
+      const [currentName, setCurrentName] = useState(existingReport?.userName || teacherName || '');
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      
+      const videoRef = useRef(null);
+      const fallbackInputRef = useRef(null);
+      const [isCameraActive, setIsCameraActive] = useState(false);
+      const [stream, setStream] = useState(null);
+
+      useEffect(() => {
+        return () => stopCamera();
+      }, [stream]);
+
+      useEffect(() => {
+        if (isCameraActive && stream && videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, [isCameraActive, stream]);
+
+      const startCamera = async () => {
+        try {
+          const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: { ideal: "environment" } } 
+          });
+          setStream(mediaStream);
+          setIsCameraActive(true);
+        } catch (err) {
+          console.warn("กล้องหลังมีปัญหา ลองเรียกกล้องใดๆ...", err);
+          try {
+            const mediaStreamFallback = await navigator.mediaDevices.getUserMedia({ video: true });
+            setStream(mediaStreamFallback);
+            setIsCameraActive(true);
+          } catch (errFallback) {
+            console.error("Camera API Blocked or Missing", errFallback);
+            triggerToast("ระบบเบราว์เซอร์บล็อคกล้อง กรุณาใช้ปุ่มถ่ายรูปสำรองแทน", "error");
+            fallbackInputRef.current?.click();
+          }
+        }
+      };
+
+      const stopCamera = () => {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          setStream(null);
+        }
+        setIsCameraActive(false);
+      };
+
+      const applyWatermarkToImage = (imageSource, width, height) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.drawImage(imageSource, 0, 0, width, height);
+
+        const now = new Date();
+        const timeStr = now.toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'medium' });
+        const text1 = `บันทึกเวลาถ่าย: ${timeStr} น.`;
+        const text2 = `สถานที่เข้าเวร: ${point.name}`;
+
+        const barHeight = Math.max(60, height * 0.12);
+        const fontSize = Math.max(14, height * 0.035);
+        
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, height - barHeight, width, barHeight);
+
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillStyle = "#FFD700"; 
+        ctx.fillText(text1, 20, height - barHeight / 2 - 5);
+        ctx.fillStyle = "#FFFFFF"; 
+        ctx.fillText(text2, 20, height - barHeight / 2 + fontSize + 5);
+
+        return canvas.toDataURL('image/jpeg', 0.8);
+      };
+
+      const handleCaptureVideo = () => {
+        if (videoRef.current) {
+          const video = videoRef.current;
+          const dataUrl = applyWatermarkToImage(video, video.videoWidth, video.videoHeight);
+          setPhotoUrl(dataUrl);
+          stopCamera();
+          triggerToast("ถ่ายรูปและประทับตราน้ำเรียบร้อย", "success");
+        }
+      };
+
+      const handleFallbackCapture = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const MAX_WIDTH = 1200;
+              let w = img.width;
+              let h = img.height;
+              if (w > MAX_WIDTH) {
+                h = Math.round((h * MAX_WIDTH) / w);
+                w = MAX_WIDTH;
+              }
+              const dataUrl = applyWatermarkToImage(img, w, h);
+              setPhotoUrl(dataUrl);
+              triggerToast("ประมวลผลรูปถ่ายและประทับตราน้ำเรียบร้อย", "success");
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleSave = async (isDraft = false) => {
+        if (!currentName.trim()) {
+          triggerToast('กรุณาระบุชื่อ-สกุลผู้ปฏิบัติเวร', 'error');
+          return;
+        }
+        if (!photoUrl && !isDraft) {
+          triggerToast('บังคับถ่ายรูปเช็คอินหน้างานเพื่อยืนยันการลงเวลา', 'error');
+          return;
+        }
+
+        setIsSubmitting(true);
+        try {
+          setTeacherName(currentName); 
+          
+          const reportData = {
+            userId: user.uid,
+            userName: currentName,
+            pointId: point.id,
+            shift: shift,
+            status: status,
+            detail: detail,
+            photoUrl: photoUrl,
+            isDraft: isDraft,
+            updatedAt: serverTimestamp(),
+          };
+
+          if (existingReport) {
+            if (!checkIsToday(existingReport.timestamp)) {
+              triggerToast('ไม่อนุญาตให้แก้ไขรายงานที่ข้ามวันไปแล้ว', 'error');
+              setIsSubmitting(false);
+              return;
+            }
+            const docRef = doc(db, 'artifacts', dutyAppId, 'public', 'data', 'reports', existingReport.id);
+            await updateDoc(docRef, reportData);
+          } else {
+            reportData.timestamp = Date.now();
+            const colRef = collection(db, 'artifacts', dutyAppId, 'public', 'data', 'reports');
+            await addDoc(colRef, reportData);
+          }
+          onSuccess();
+        } catch (error) {
+          console.error("Error saving:", error);
+          triggerToast("เกิดข้อผิดพลาดในการบันทึก", "error");
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      return (
+        <div className="p-5 sm:p-6 bg-white rounded-xl">
+          <div className="flex items-center justify-between mb-6 border-b pb-4">
+            <div>
+              <span className="bg-red-100 text-red-800 text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1 w-max">
+                <Lock className="w-3 h-3" /> ล็อกพิกัดเวลาและภาพถ่ายสด
+              </span>
+              <h2 className="text-xl font-bold text-gray-800 mt-2 flex items-center gap-1">
+                <MapPin className="w-5 h-5 text-indigo-600" /> {point.name}
+              </h2>
+            </div>
+            <button onClick={onCancel} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">1. ชื่อ-สกุล ผู้ปฏิบัติเวร *</label>
+              <input
+                type="text"
+                value={currentName}
+                onChange={(e) => setCurrentName(e.target.value)}
+                placeholder="เช่น นายครูใจดี มีความรับผิดชอบ"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-indigo-50/30"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">2. เลือกช่วงเวลา</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {SHIFTS.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setShift(s.id)}
+                    className={`p-3 text-sm font-bold rounded-lg border text-center transition-all ${
+                      shift === s.id 
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500 shadow-sm' 
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                3. ถ่ายรูปเช็คอินหน้างาน <span className="text-red-500 font-normal">(กล้องจะเปิดอัตโนมัติ)</span>
+              </label>
+              
+              {isCameraActive && (
+                <div className="relative w-full h-72 sm:h-96 bg-black rounded-lg overflow-hidden flex flex-col justify-end">
+                  <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+                  
+                  <div className="relative z-10 flex justify-center items-center pb-6 pt-12 bg-gradient-to-t from-black/60 to-transparent">
+                    <button 
+                      onClick={handleCaptureVideo}
+                      className="w-16 h-16 bg-white border-4 border-gray-300 rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform"
+                    >
+                      <div className="w-12 h-12 bg-white rounded-full border border-gray-100"></div>
+                    </button>
+                  </div>
+
+                  <button onClick={stopCamera} className="absolute top-4 right-4 bg-red-500 text-white p-2 rounded-full shadow-lg">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              <input 
+                ref={fallbackInputRef}
+                type="file" 
+                accept="image/*" 
+                capture="environment" 
+                onChange={handleFallbackCapture}
+                className="hidden" 
+              />
+
+              {!isCameraActive && (
+                <div className="mt-1">
+                  {photoUrl ? (
+                    <div className="relative w-full rounded-md overflow-hidden bg-gray-900 border-2 border-gray-300">
+                      <img src={photoUrl} alt="Check-in Watermarked" className="w-full h-auto object-contain" />
+                      <button 
+                        onClick={() => setPhotoUrl(null)}
+                        className="absolute top-3 right-3 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-md flex items-center gap-1 text-xs font-bold"
+                      >
+                        <Trash2 className="w-4 h-4" /> ถ่ายใหม่
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={startCamera}
+                      className="flex flex-col justify-center items-center px-6 py-10 border-2 border-gray-300 border-dashed rounded-lg bg-gray-50 hover:bg-indigo-50 transition-colors cursor-pointer group shadow-inner"
+                    >
+                      <div className="w-16 h-16 bg-white rounded-full shadow flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <Camera className="h-8 w-8 text-indigo-600 text-2xl" />
+                      </div>
+                      <span className="font-bold text-indigo-700 text-lg">เปิดกล้องถ่ายภาพสด</span>
+                      <p className="text-xs text-gray-500 mt-2 text-center">หากปุ่มนี้ไม่ทำงาน ให้กดอีกครั้งเพื่อเปิดแอปกล้องในเครื่อง</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">4. สรุปเหตุการณ์ปัจจุบัน</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                  <input type="radio" value="normal" checked={status === 'normal'} onChange={(e) => setStatus(e.target.value)} className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> เหตุการณ์ปกติ</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer bg-red-50 px-4 py-2 rounded-lg border border-red-200">
+                  <input type="radio" value="abnormal" checked={status === 'abnormal'} onChange={(e) => setStatus(e.target.value)} className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-semibold text-red-700 flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> ผิดปกติ</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                5. รายละเอียดสถานการณ์ <span className="text-gray-400 font-normal">(บันทึกด่วนไว้เขียนทีหลัง "ภายในวันนี้" ได้)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+                placeholder="ระบุรายละเอียดเหตุการณ์เพิ่มเติม..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              />
+            </div>
+
+            <div className="pt-4 flex flex-col sm:flex-row gap-3 border-t">
+              <button
+                onClick={() => handleSave(false)}
+                disabled={isSubmitting || isCameraActive}
+                className="flex-1 inline-flex justify-center items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors shadow-md"
+              >
+                <Save className="w-5 h-5" /> {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกส่งรายงานทางการ'}
+              </button>
+              
+              <button
+                onClick={() => handleSave(true)}
+                disabled={isSubmitting || isCameraActive}
+                className="flex-1 inline-flex justify-center items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-300 text-amber-800 rounded-md font-bold hover:bg-amber-100 transition-colors"
+              >
+                <Clock className="w-5 h-5" /> ถ่ายรูปไว้ก่อน (เขียนทีหลัง)
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ReportCard({ report, dutyPoints, isOwner = false, triggerToast, teacherName, setTeacherName }) {
+      const [isEditing, setIsEditing] = useState(false);
+      const point = dutyPoints.find(p => p.id === report.pointId);
+      const shiftInfo = SHIFTS.find(s => s.id === report.shift);
+      
+      const timeString = new Date(report.timestamp).toLocaleString('th-TH', { 
+        dateStyle: 'medium', timeStyle: 'short' 
+      });
+
+      const isToday = checkIsToday(report.timestamp);
+
+      if (isEditing && isOwner && isToday) {
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
+            <ReportForm 
+              user={{ uid: report.userId }} 
+              point={point} 
+              onCancel={() => setIsEditing(false)} 
+              onSuccess={() => { setIsEditing(false); triggerToast('อัปเดตรายงานสำเร็จ', 'success'); }}
+              existingReport={report}
+              triggerToast={triggerToast}
+              teacherName={teacherName}
+              setTeacherName={setTeacherName}
+            />
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col sm:flex-row relative">
+          <div className="sm:w-48 h-48 sm:h-auto bg-gray-100 relative flex-shrink-0">
+            {report.photoUrl ? (
+              <img src={report.photoUrl} alt="Report" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-50">
+                <ImageIcon className="w-10 h-10 text-3xl" />
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="font-bold text-gray-800 text-lg">{point?.name || 'จุดตรวจนิรนาม'}</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                    <Clock className="w-4 h-4" />
+                    <span>{timeString} ({shiftInfo?.label})</span>
+                  </div>
+                </div>
+                {report.status === 'normal' ? (
+                  <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-green-200">
+                    <CheckCircle className="w-3 h-3" /> ปกติ
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-red-200">
+                    <AlertTriangle className="w-3 h-3" /> ผิดปกติ
+                  </span>
+                )}
+              </div>
+              
+              <div className="mt-3">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {report.detail || <span className="text-gray-400 italic">ลงบันทึกเวลาอย่างย่อไว้ ยังไม่ได้ระบุรายละเอียดประกอบเวร</span>}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <div className="text-xs text-gray-500 flex items-center gap-1">
+                <User className="w-3.5 h-3.5" />
+                ผู้บันทึก: {report.userName}
+              </div>
+              
+              {isOwner && (
+                isToday ? (
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded hover:bg-indigo-100 font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> {report.isDraft ? 'เขียนรายละเอียดเพิ่มเติม' : 'แก้ไขรายงาน'}
+                  </button>
+                ) : (
+                  <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1.5 rounded font-semibold flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5" /> หมดเวลาแก้ไข
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function InspectorView({ dutyPoints, reports, triggerToast }) {
+      const [filterShift, setFilterShift] = useState('all');
+      const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+      const activeReports = reports.filter(r => new Date(r.timestamp).toISOString().split('T')[0] === selectedDate);
+      const filteredReports = filterShift === 'all' ? activeReports : activeReports.filter(r => r.shift === filterShift);
+      const getMissingPoints = (shiftId) => {
+        const reportedIds = new Set(activeReports.filter(r => r.shift === shiftId).map(r => r.pointId));
+        return dutyPoints.filter(p => !reportedIds.has(p.id));
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl shadow-sm border border-gray-100 no-print">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Shield className="w-5 h-5 text-indigo-600" /> แดชบอร์ดตรวจสอบเวรย้อนหลัง</h2>
+              <p className="text-sm text-gray-500 flex items-center gap-1 mt-1"><Calendar className="w-4 h-4" /> {new Date(selectedDate).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 font-bold mb-1">เลือกวันที่ตรวจเวร</label>
+                <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); triggerToast(`แสดงข้อมูลวันที่: ${e.target.value}`, 'success'); }} className="border-gray-300 rounded-md text-sm shadow-sm px-2 py-1" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-bold mb-1">เลือกช่วงเวลา</label>
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button onClick={() => setFilterShift('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${filterShift === 'all' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>ทั้งหมด</button>
+                  {SHIFTS.map(s => (
+                    <button key={s.id} onClick={() => setFilterShift(s.id)} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${filterShift === s.id ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>{s.label.split(' ')[0]}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
+            <div className="lg:col-span-1 space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4"><AlertTriangle className="w-5 h-5 text-amber-500 animate-pulse" /> จุดที่ขาดเวร/ยังไม่ส่ง</h3>
+                <div className="space-y-4">
+                  {SHIFTS.filter(s => filterShift === 'all' || filterShift === s.id).map(shift => {
+                    const missing = getMissingPoints(shift.id);
+                    return (
+                      <div key={shift.id} className="border-b last:border-0 pb-3 last:pb-0">
+                        <h4 className="text-sm font-bold text-indigo-700 flex items-center gap-1 mb-2"><Clock className="w-4 h-4" /> {shift.label}</h4>
+                        {missing.length === 0 ? <p className="text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">✔ ลงตรวจเวรครบทุกจุด</p> : (
+                          <ul className="space-y-1.5">
+                            {missing.map(p => <li key={p.id} className="text-xs text-gray-600 flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-rose-400 rounded-full"></span><span>{p.name}</span></li>)}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 space-y-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-600" /> บันทึกการส่งรายงาน ({filteredReports.length} รายการ)</h3>
+              {filteredReports.length === 0 ? <div className="bg-white rounded-xl p-8 text-center text-gray-400">ไม่มีผู้บันทึกเวรในหมวดหมู่นี้</div> : (
+                <div className="space-y-4">{filteredReports.map(report => <ReportCard key={report.id} report={report} dutyPoints={dutyPoints} />)}</div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <h3 className="font-bold text-gray-800 text-lg mb-3 flex items-center gap-2 no-print"><FileText className="w-5 h-5 text-indigo-600" /> พรีวิวกระดาษรายงานเวรทางการ</h3>
+            <OfficialReportFormSheet selectedDate={selectedDate} dutyPoints={dutyPoints} reports={reports} />
+          </div>
+        </div>
+      );
+    }
+
+    function AdminView({ dutyPoints, reports, triggerToast, triggerConfirm }) {
+      const [activeTab, setActiveTab] = useState('points'); 
+      const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+      const [isAddingPoint, setIsAddingPoint] = useState(false);
+      const [newPointName, setNewPointName] = useState('');
+      const [newPointLocation, setNewPointLocation] = useState('');
+
+      const handleAddPoint = async (e) => {
+        e.preventDefault();
+        if (!newPointName) return;
+        try {
+          await addDoc(collection(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints'), { name: newPointName, location: newPointLocation, createdAt: serverTimestamp() });
+          setIsAddingPoint(false); setNewPointName(''); setNewPointLocation('');
+          triggerToast("เพิ่มจุดตรวจเวรสำเร็จ", "success");
+        } catch (err) { triggerToast("เกิดข้อผิดพลาด", "error"); }
+      };
+
+      const handleDeletePoint = (id) => {
+        triggerConfirm('ต้องการที่จะลบจุดตรวจเวรนี้ใช่หรือไม่?', async () => {
+          try {
+            await deleteDoc(doc(db, 'artifacts', dutyAppId, 'public', 'data', 'dutyPoints', id));
+            triggerToast("ลบจุดตรวจเรียบร้อย", "success");
+          } catch (err) {}
+        });
+      };
+
+      const getQrUrl = (pointId) => {
+        const currentDomain = window.location.origin + window.location.pathname;
+        return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${currentDomain}?pointId=${pointId}`)}&margin=15`;
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex gap-4 border-b border-gray-200 no-print">
+            <button onClick={() => setActiveTab('points')} className={`pb-2 px-1 font-bold text-sm transition-colors flex items-center gap-2 ${activeTab === 'points' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500'}`}><Settings className="w-4 h-4" /> จัดการจุดตรวจ & QR</button>
+            <button onClick={() => setActiveTab('reports')} className={`pb-2 px-1 font-bold text-sm transition-colors flex items-center gap-2 ${activeTab === 'reports' ? 'border-b-2 border-indigo-600 text-indigo-700' : 'text-gray-500'}`}><FileText className="w-4 h-4" /> รายงานสรุปแบบตารางย้อนหลัง</button>
+          </div>
+
+          {activeTab === 'points' && (
+            <div className="space-y-6 no-print">
+              <div className="flex justify-between items-center gap-3">
+                <div><h2 className="text-xl font-bold text-gray-800">ระบบจัดการตำแหน่งจุดตรวจ</h2><p className="text-sm text-gray-500">สร้าง QR Code เพื่อให้ผู้รายงานสแกนตรงจากพื้นที่ตรวจได้ทันที</p></div>
+                <button onClick={() => setIsAddingPoint(!isAddingPoint)} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-semibold hover:bg-indigo-700">{isAddingPoint ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{isAddingPoint ? 'ปิดแบบฟอร์ม' : 'เพิ่มจุดใหม่'}</button>
+              </div>
+
+              {isAddingPoint && (
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-indigo-100">
+                  <form onSubmit={handleAddPoint} className="flex flex-col sm:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full"><label className="block text-sm font-bold text-gray-700 mb-1">ชื่อจุดตรวจเวร *</label><input type="text" required value={newPointName} onChange={(e) => setNewPointName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm" /></div>
+                    <div className="flex-1 w-full"><label className="block text-sm font-bold text-gray-700 mb-1">คำอธิบาย</label><input type="text" value={newPointLocation} onChange={(e) => setNewPointLocation(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm" /></div>
+                    <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-md text-sm font-bold hover:bg-green-700 h-[38px]">บันทึกข้อมูล</button>
+                  </form>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {dutyPoints.map(point => (
+                  <div key={point.id} className="bg-white rounded-xl shadow-md border border-gray-100 p-5 flex flex-col justify-between hover:shadow-lg transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div><h3 className="font-bold text-gray-800 text-lg flex items-center gap-1"><MapPin className="w-5 h-5 text-indigo-500" />{point.name}</h3><p className="text-sm text-gray-500 mt-1">{point.location || '-'}</p></div>
+                      <button onClick={() => handleDeletePoint(point.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded bg-gray-50"><Trash2 className="w-4.5 h-4.5" /></button>
+                    </div>
+                    <div className="mt-6 pt-4 border-t border-gray-100 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-20 h-20 bg-white border border-gray-200 p-1 rounded-md shadow-sm flex-shrink-0"><img src={getQrUrl(point.id)} alt="QR Code" className="w-full h-full object-cover" /></div>
+                        <div className="text-xs text-gray-400 space-y-1"><span className="font-bold text-gray-600 block">บาร์โค้ดลงทะเบียนทันที</span><span>เมื่อสแกนด้วยกล้องมือถือ จะเด้งเข้าสู่ฟอร์มบันทึกเวลาโดยตรง</span></div>
+                      </div>
+                      <div className="flex justify-between items-center gap-2 pt-2">
+                        <a href={getQrUrl(point.id)} download={`QR_${point.name}.png`} target="_blank" rel="noreferrer" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded font-semibold flex items-center gap-1 w-full justify-center"><Download className="w-3.5 h-3.5" /> ดาวน์โหลดภาพสำหรับปรินต์</a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'reports' && (
+            <div className="space-y-6">
+              <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center gap-4 no-print">
+                <div><h2 className="text-lg font-bold text-gray-800">ค้นหาตารางบันทึกรายงานเวรทางการ</h2></div>
+                <div className="flex items-center gap-2"><label className="text-sm text-gray-600 font-bold">เลือกวันที่ย้อนหลัง:</label><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="border-gray-300 rounded-md shadow-sm text-sm px-2 py-1" /></div>
+              </div>
+              <OfficialReportFormSheet selectedDate={selectedDate} dutyPoints={dutyPoints} reports={reports} />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function OfficialReportFormSheet({ selectedDate, dutyPoints, reports }) {
+      const formatThaiDate = (dateString) => {
+        if (!dateString) return '';
+        const d = new Date(dateString);
+        const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        return `วัน${d.toLocaleDateString('th-TH', { weekday: 'long' })} ที่ ${d.getDate()} เดือน ${months[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
+      };
+
+      const getCellReport = (pointId, shiftId) => reports.find(r => new Date(r.timestamp).toISOString().split('T')[0] === selectedDate && r.pointId === pointId && r.shift === shiftId);
+      const getShiftDisplayName = (shiftId) => ({ morning: 'ช่วงเช้า', lunch: 'ช่วงพักกลางวัน', evening: 'ช่วงเย็น' }[shiftId] || 'เวร');
+
+      const renderReportDetail = (report) => {
+        if (!report) return <div className="mt-2 text-gray-300"><div className="border-b border-dotted border-gray-400 w-full mb-4"></div><div className="border-b border-dotted border-gray-400 w-full mb-2"></div></div>;
+        return (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              {report.status === 'normal' ? <span className="text-green-700 font-bold text-sm">✔ เหตุการณ์ปกติ</span> : <span className="text-red-700 font-bold text-sm">⚠ มีเหตุผิดปกติ</span>}
+              <span className="text-gray-500 text-xs">(เวลา {new Date(report.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)</span>
+            </div>
+            {report.detail && <div className="text-gray-800 text-sm">{report.detail}</div>}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-4">
+          <div className="flex justify-end no-print">
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow"><Printer className="w-5 h-5" /> พิมพ์แบบรายงานเวรทางการ (A4)</button>
+          </div>
+          <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-md print-container print:p-0 print:border-none print:shadow-none print-full-width">
+            <div className="text-center space-y-2 pb-6 mb-6">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">สมุดบันทึกรายงานการปฏิบัติเวรประจำจุด</h1>
+              <p className="text-md text-gray-800 font-bold mt-2">ประจำ{formatThaiDate(selectedDate)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse border border-black">
+                <thead>
+                  <tr className="bg-gray-50"><th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[20%]">เวรประจำจุด</th><th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[55%]">บันทึกเวร</th><th className="px-4 py-3 border border-black text-center text-md font-bold text-gray-900 w-[25%]">ผู้รายงาน</th></tr>
+                </thead>
+                <tbody className="bg-white">
+                  {dutyPoints.map((point) => {
+                    const mReport = getCellReport(point.id, 'morning');
+                    const lReport = getCellReport(point.id, 'lunch');
+                    const eReport = getCellReport(point.id, 'evening');
+                    const uniqueReporters = [...new Set([mReport, lReport, eReport].filter(Boolean).map(r => r.userName))];
+
+                    return (
+                      <React.Fragment key={point.id}>
+                        <tr>
+                          <td rowSpan={3} className="px-4 py-4 border border-black align-top text-center"><div className="font-bold text-gray-900 text-lg">{point.name}</div></td>
+                          <td className="px-4 py-3 border border-black align-top min-h-[80px]"><div className="font-bold text-gray-900">{getShiftDisplayName('morning')}</div>{renderReportDetail(mReport)}</td>
+                          <td rowSpan={3} className="px-4 py-4 border border-black align-top text-center">
+                            {uniqueReporters.length > 0 ? <div className="space-y-4 mt-2">{uniqueReporters.map((name, idx) => <div key={idx} className="text-sm font-semibold text-gray-800">{name}</div>)}</div> : <div className="flex flex-col h-full justify-center text-gray-300 italic text-sm">(ลงนามผู้ปฏิบัติเวร)</div>}
+                          </td>
+                        </tr>
+                        <tr><td className="px-4 py-3 border border-black align-top min-h-[80px]"><div className="font-bold text-gray-900">{getShiftDisplayName('lunch')}</div>{renderReportDetail(lReport)}</td></tr>
+                        <tr><td className="px-4 py-3 border border-black align-top min-h-[80px]"><div className="font-bold text-gray-900">{getShiftDisplayName('evening')}</div>{renderReportDetail(eReport)}</td></tr>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 print:grid-cols-3">
+              <div className="text-center space-y-8 flex flex-col justify-between"><h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายผู้ยืนเวรตรวจ</h4><div className="space-y-2"><p className="text-sm">ลงชื่อ......................................................</p><p className="text-xs text-gray-400">ข้าราชการครูและบุคลากรทางการศึกษาประจำจุด</p></div></div>
+              <div className="text-center space-y-8 flex flex-col justify-between border-t md:border-t-0 md:border-x border-gray-200 py-4 md:py-0"><h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายตรวจสอบและสรุป</h4><div className="space-y-2"><p className="text-sm">ลงชื่อ......................................................</p><p className="text-xs text-gray-400">ผู้รับผิดชอบสายตรวจโรงเรียน</p></div></div>
+              <div className="text-center space-y-8 flex flex-col justify-between"><h4 className="text-xs font-bold text-gray-400 uppercase">ฝ่ายรับรองและสั่งการ</h4><div className="space-y-2"><p className="text-sm">ลงชื่อ......................................................</p><p className="text-xs text-gray-400">ผู้อำนวยการโรงเรียนหรือผู้รักษาการแทน</p></div></div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- 6. Render the Application ---
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
